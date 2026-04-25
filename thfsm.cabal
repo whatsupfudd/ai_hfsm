@@ -30,6 +30,7 @@ library
       Commands.Version
       DB.Connect
       DB.Opers
+      Hfsm.Compile.Exec
       Hfsm.Core
       Hfsm.Core.Codec
       Hfsm.Core.Digest
@@ -46,6 +47,7 @@ library
       Hfsm.Graph.Index
       Hfsm.Proj.Active
       Hfsm.Proj.Queue
+      Hfsm.Proj.Rebuild
       Hfsm.Proj.Trace
       Hfsm.Proj.Tree
       Hfsm.Runtime.Model
@@ -56,11 +58,21 @@ library
       Hfsm.Runtime.Model.Signal
       Hfsm.Runtime.Model.Snapshot
       Hfsm.Runtime.Model.Step
+      Hfsm.Spec.Build
       Hfsm.Spec.Case
       Hfsm.Spec.Def
+      Hfsm.Spec.Indexed
       Hfsm.Spec.Route
       Hfsm.Store.Class
       Hfsm.Validate.Error
+      Hfsm.Validate.History
+      Hfsm.Validate.Join
+      Hfsm.Validate.Reach
+      Hfsm.Validate.Report
+      Hfsm.Validate.Route
+      Hfsm.Validate.Struct
+      Hfsm.Validate.Version
+      Hfsm.Validate.Wait
       HttpSup.CorsPolicy
       MainLogic
       Options
