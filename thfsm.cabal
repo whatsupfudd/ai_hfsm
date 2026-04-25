@@ -39,6 +39,9 @@ library
       Hfsm.Core.Path
       Hfsm.Core.Ref
       Hfsm.Core.Version
+      Hfsm.Export.Graphviz
+      Hfsm.Export.Mermaid
+      Hfsm.Export.Scxml
       Hfsm.Graph.Def
       Hfsm.Graph.Index
       Hfsm.Proj.Active

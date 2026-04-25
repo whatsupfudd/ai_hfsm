@@ -47,8 +47,7 @@ module Hfsm.Core.Ref
   ) where
 
 import Control.DeepSeq (NFData)
-import Data.Aeson (FromJSON(..), ToJSON, ToJSONKey, withScientific)
-import Data.Aeson.Types (FromJSONKey(..))
+
 import Data.Hashable (Hashable)
 import Data.Scientific (Scientific)
 import qualified Data.Scientific as Sci
@@ -56,7 +55,9 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Read as TR
 import Data.Word (Word32)
-import Data.Aeson (FromJSONKeyFunction(..))
+
+import Data.Aeson (FromJSON(..), ToJSON, ToJSONKey, withScientific, FromJSONKeyFunction(..))
+import Data.Aeson.Types (FromJSONKey(..))
 
 data RefErr =
     NegativeEr Integer
