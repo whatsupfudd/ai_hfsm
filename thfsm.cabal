@@ -40,6 +40,12 @@ library
       Hfsm.Core.Ref
       Hfsm.Core.Version
       Hfsm.Graph.Def
+      Hfsm.Graph.Index
+      Hfsm.Proj.Active
+      Hfsm.Proj.Queue
+      Hfsm.Proj.Trace
+      Hfsm.Proj.Tree
+      Hfsm.Runtime.Model
       Hfsm.Runtime.Model.Break
       Hfsm.Runtime.Model.Child
       Hfsm.Runtime.Model.Instance
@@ -48,7 +54,9 @@ library
       Hfsm.Runtime.Model.Snapshot
       Hfsm.Runtime.Model.Step
       Hfsm.Spec.Case
+      Hfsm.Spec.Def
       Hfsm.Spec.Route
+      Hfsm.Store.Class
       Hfsm.Validate.Error
       HttpSup.CorsPolicy
       MainLogic

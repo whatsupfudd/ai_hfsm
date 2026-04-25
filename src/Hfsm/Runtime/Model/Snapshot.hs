@@ -8,6 +8,7 @@ module Hfsm.Runtime.Model.Snapshot
   ( SnapshotRw(..)
   ) where
 
+import Control.DeepSeq (NFData)
 import Data.Int (Int64)
 import Data.Time (UTCTime)
 import Data.UUID (UUID)
@@ -36,4 +37,4 @@ data SnapshotRw = SnapshotRw
   , createdAt :: UTCTime
   }
   deriving stock (Eq, Show, Read, Generic)
-  deriving anyclass (ToJSON, FromJSON)
+  deriving anyclass (NFData, ToJSON, FromJSON)

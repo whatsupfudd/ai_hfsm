@@ -16,6 +16,8 @@ module Hfsm.Runtime.Model.Instance
   , touchInstance
   ) where
 
+import Control.DeepSeq (NFData)
+
 import Data.Int (Int64)
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -41,6 +43,7 @@ data InstanceStatus
   | FailedIs
   | CancelledIs
   deriving stock (Eq, Ord, Show, Read, Enum, Bounded, Generic)
+  deriving anyclass (NFData)
 
 data InstanceRw = InstanceRw
   { uid :: Int64
