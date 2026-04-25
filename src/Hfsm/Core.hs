@@ -1,0 +1,389 @@
+module Hfsm.Core
+  ( -- * Names
+    NameKind(..)
+  , NameErr
+  , MachineName
+  , StateName
+  , RegionName
+  , CaseName
+  , HandoffName
+  , JoinName
+  , TimerName
+  , BreakName
+  , maxNameLen
+  , machineNameText
+  , stateNameText
+  , regionNameText
+  , caseNameText
+  , handoffNameText
+  , joinNameText
+  , timerNameText
+  , breakNameText
+  , mkMachineName
+  , mkStateName
+  , mkRegionName
+  , mkCaseName
+  , mkHandoffName
+  , mkJoinName
+  , mkTimerName
+  , mkBreakName
+  , validateMachineName
+  , validateStateName
+  , validateRegionName
+  , validateCaseName
+  , validateHandoffName
+  , validateJoinName
+  , validateTimerName
+  , validateBreakName
+  , renderNameErr
+
+    -- * Refs
+  , RefErr(..)
+  , MachineRef
+  , RegionRef
+  , StateRef
+  , CaseRef
+  , RouteRef
+  , JoinRef
+  , TimerRef
+  , BreakRef
+  , machineRefWord32
+  , regionRefWord32
+  , stateRefWord32
+  , caseRefWord32
+  , routeRefWord32
+  , joinRefWord32
+  , timerRefWord32
+  , breakRefWord32
+  , mkMachineRef
+  , mkRegionRef
+  , mkStateRef
+  , mkCaseRef
+  , mkRouteRef
+  , mkJoinRef
+  , mkTimerRef
+  , mkBreakRef
+  , machineRefFromInt
+  , regionRefFromInt
+  , stateRefFromInt
+  , caseRefFromInt
+  , routeRefFromInt
+  , joinRefFromInt
+  , timerRefFromInt
+  , breakRefFromInt
+  , machineRefFromInteger
+  , regionRefFromInteger
+  , stateRefFromInteger
+  , caseRefFromInteger
+  , routeRefFromInteger
+  , joinRefFromInteger
+  , timerRefFromInteger
+  , breakRefFromInteger
+  , renderRefErr
+
+    -- * Versions
+  , MachineVersion
+  , VersionPolicy(..)
+  , VersionErr
+  , maxVersionLen
+  , machineVersionText
+  , mkMachineVersion
+  , validateMachineVersion
+  , versionSeries
+  , sameSeries
+  , acceptsVersion
+  , needsMigratePlan
+  , renderVersionPolicy
+  , renderVersionErr
+
+    -- * Digests
+  , DigestErr
+  , SpecDigest
+  , GraphDigest
+  , digestLen
+  , specDigestText
+  , graphDigestText
+  , mkSpecDigest
+  , mkGraphDigest
+  , validateSpecDigest
+  , validateGraphDigest
+  , renderDigestErr
+
+    -- * Paths
+  , RegionPath
+  , StatePath
+  , InstancePath
+  , regionPathVector
+  , statePathVector
+  , instancePathVector
+  , regionPathToList
+  , statePathToList
+  , instancePathToList
+  , emptyRegionPath
+  , emptyStatePath
+  , emptyInstancePath
+  , singletonRegionPath
+  , singletonStatePath
+  , singletonInstancePath
+  , appendRegionRef
+  , appendStateRef
+  , appendInstanceId
+  , prependRegionRef
+  , prependStateRef
+  , prependInstanceId
+  , regionPathLength
+  , statePathLength
+  , instancePathLength
+  , regionPathLast
+  , statePathLast
+  , instancePathLast
+  , regionPathInit
+  , statePathInit
+  , instancePathInit
+  , renderRegionPath
+  , renderStatePath
+  , renderInstancePath
+
+    -- * Metadata
+  , MetaSpec(..)
+  , SourceSpan
+  , SpanErr(..)
+  , emptyMetaSpec
+  , mkSourceSpan
+  , pointSourceSpan
+  , validateSourceSpan
+  , mergeMetaSpec
+  , addTag
+  , dropTag
+  , hasTag
+  , addSpan
+  , renderSpanErr
+
+    -- * Codecs
+  , CodecErr(..)
+  , Codec(..)
+  , CodecSet(..)
+  , mkCodec
+  , mkCodecSet
+  , jsonCodec
+  , jsonCodecWithSchema
+  , encodeWith
+  , decodeWith
+  , validateWith
+  , setSchema
+  , mapCodec
+  , renderCodecErr
+
+    -- * Errors
+  , ErrKind(..)
+  , HfsmErr(..)
+  , errKind
+  , compileErr
+  , validateErr
+  , engineErr
+  , storeErr
+  , replayErr
+  , migrateErr
+  , codecErr
+  , addContext
+  , renderErrKind
+  , renderHfsmErr
+  ) where
+
+import Hfsm.Core.Name
+  ( NameKind(..)
+  , NameErr
+  , MachineName
+  , StateName
+  , RegionName
+  , CaseName
+  , HandoffName
+  , JoinName
+  , TimerName
+  , BreakName
+  , maxNameLen
+  , machineNameText
+  , stateNameText
+  , regionNameText
+  , caseNameText
+  , handoffNameText
+  , joinNameText
+  , timerNameText
+  , breakNameText
+  , mkMachineName
+  , mkStateName
+  , mkRegionName
+  , mkCaseName
+  , mkHandoffName
+  , mkJoinName
+  , mkTimerName
+  , mkBreakName
+  , validateMachineName
+  , validateStateName
+  , validateRegionName
+  , validateCaseName
+  , validateHandoffName
+  , validateJoinName
+  , validateTimerName
+  , validateBreakName
+  , renderNameErr
+  )
+
+import Hfsm.Core.Ref
+  ( RefErr(..)
+  , MachineRef
+  , RegionRef
+  , StateRef
+  , CaseRef
+  , RouteRef
+  , JoinRef
+  , TimerRef
+  , BreakRef
+  , machineRefWord32
+  , regionRefWord32
+  , stateRefWord32
+  , caseRefWord32
+  , routeRefWord32
+  , joinRefWord32
+  , timerRefWord32
+  , breakRefWord32
+  , mkMachineRef
+  , mkRegionRef
+  , mkStateRef
+  , mkCaseRef
+  , mkRouteRef
+  , mkJoinRef
+  , mkTimerRef
+  , mkBreakRef
+  , machineRefFromInt
+  , regionRefFromInt
+  , stateRefFromInt
+  , caseRefFromInt
+  , routeRefFromInt
+  , joinRefFromInt
+  , timerRefFromInt
+  , breakRefFromInt
+  , machineRefFromInteger
+  , regionRefFromInteger
+  , stateRefFromInteger
+  , caseRefFromInteger
+  , routeRefFromInteger
+  , joinRefFromInteger
+  , timerRefFromInteger
+  , breakRefFromInteger
+  , renderRefErr
+  )
+
+import Hfsm.Core.Version
+  ( MachineVersion
+  , VersionPolicy(..)
+  , VersionErr
+  , maxVersionLen
+  , machineVersionText
+  , mkMachineVersion
+  , validateMachineVersion
+  , versionSeries
+  , sameSeries
+  , acceptsVersion
+  , needsMigratePlan
+  , renderVersionPolicy
+  , renderVersionErr
+  )
+
+import Hfsm.Core.Digest
+  ( DigestErr
+  , SpecDigest
+  , GraphDigest
+  , digestLen
+  , specDigestText
+  , graphDigestText
+  , mkSpecDigest
+  , mkGraphDigest
+  , validateSpecDigest
+  , validateGraphDigest
+  , renderDigestErr
+  )
+
+import Hfsm.Core.Path
+  ( RegionPath
+  , StatePath
+  , InstancePath
+  , regionPathVector
+  , statePathVector
+  , instancePathVector
+  , regionPathToList
+  , statePathToList
+  , instancePathToList
+  , emptyRegionPath
+  , emptyStatePath
+  , emptyInstancePath
+  , singletonRegionPath
+  , singletonStatePath
+  , singletonInstancePath
+  , appendRegionRef
+  , appendStateRef
+  , appendInstanceId
+  , prependRegionRef
+  , prependStateRef
+  , prependInstanceId
+  , regionPathLength
+  , statePathLength
+  , instancePathLength
+  , regionPathLast
+  , statePathLast
+  , instancePathLast
+  , regionPathInit
+  , statePathInit
+  , instancePathInit
+  , renderRegionPath
+  , renderStatePath
+  , renderInstancePath
+  )
+
+import Hfsm.Core.Meta
+  ( MetaSpec(..)
+  , SourceSpan
+  , SpanErr(..)
+  , emptyMetaSpec
+  , mkSourceSpan
+  , pointSourceSpan
+  , validateSourceSpan
+  , mergeMetaSpec
+  , addTag
+  , dropTag
+  , hasTag
+  , addSpan
+  , renderSpanErr
+  )
+
+import Hfsm.Core.Codec
+  ( CodecErr(..)
+  , Codec(..)
+  , CodecSet(..)
+  , mkCodec
+  , mkCodecSet
+  , jsonCodec
+  , jsonCodecWithSchema
+  , encodeWith
+  , decodeWith
+  , validateWith
+  , setSchema
+  , mapCodec
+  , renderCodecErr
+  )
+
+import Hfsm.Core.Error
+  ( ErrKind(..)
+  , HfsmErr(..)
+  , errKind
+  , compileErr
+  , validateErr
+  , engineErr
+  , storeErr
+  , replayErr
+  , migrateErr
+  , codecErr
+  , addContext
+  , renderErrKind
+  , renderHfsmErr
+  )

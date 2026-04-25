@@ -1,0 +1,154 @@
+cabal-version: 1.12
+
+-- This file has been generated from package.yaml by hpack version 0.38.1.
+--
+-- see: https://github.com/sol/hpack
+
+name:           thfsm
+version:        0.1.0.0
+description:    Please see the README on GitHub at <https://github.com/hugdro/thfsm#readme>
+homepage:       https://github.com/hugdro/thfsm#readme
+bug-reports:    https://github.com/hugdro/thfsm/issues
+author:         Hugo DesRosiers
+maintainer:     hugo.desrosiers@boardingcities.com
+copyright:      None.
+license:        BSD3
+license-file:   LICENSE
+build-type:     Simple
+extra-source-files:
+    README.md
+    CHANGELOG.md
+
+source-repository head
+  type: git
+  location: https://github.com/hugdro/thfsm
+
+library
+  exposed-modules:
+      Commands
+      Commands.Help
+      Commands.Version
+      DB.Connect
+      DB.Opers
+      Hfsm.Core
+      Hfsm.Core.Codec
+      Hfsm.Core.Digest
+      Hfsm.Core.Error
+      Hfsm.Core.Meta
+      Hfsm.Core.Name
+      Hfsm.Core.Path
+      Hfsm.Core.Ref
+      Hfsm.Core.Version
+      Hfsm.Graph.Def
+      Hfsm.Runtime.Model.Break
+      Hfsm.Runtime.Model.Child
+      Hfsm.Runtime.Model.Instance
+      Hfsm.Runtime.Model.Outbox
+      Hfsm.Runtime.Model.Signal
+      Hfsm.Runtime.Model.Snapshot
+      Hfsm.Runtime.Model.Step
+      Hfsm.Spec.Case
+      Hfsm.Spec.Route
+      Hfsm.Validate.Error
+      HttpSup.CorsPolicy
+      MainLogic
+      Options
+      Options.Cli
+      Options.ConfFile
+      Options.Runtime
+  other-modules:
+      Paths_thfsm
+  hs-source-dirs:
+      src
+  default-extensions:
+      OverloadedStrings
+      DuplicateRecordFields
+      OverloadedRecordDot
+  ghc-options: -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints
+  build-depends:
+      aeson
+    , base >=4.7 && <5
+    , bytestring
+    , containers
+    , deepseq
+    , directory
+    , filepath
+    , gitrev
+    , hashable
+    , mtl
+    , optparse-applicative
+    , scientific
+    , text
+    , time
+    , unix
+    , uuid
+    , vector
+    , yaml
+  default-language: Haskell2010
+
+executable thfsm
+  main-is: Main.hs
+  other-modules:
+      Paths_thfsm
+  hs-source-dirs:
+      app
+  default-extensions:
+      OverloadedStrings
+      DuplicateRecordFields
+      OverloadedRecordDot
+  ghc-options: -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      aeson
+    , base >=4.7 && <5
+    , bytestring
+    , containers
+    , deepseq
+    , directory
+    , filepath
+    , gitrev
+    , hashable
+    , mtl
+    , optparse-applicative
+    , scientific
+    , text
+    , thfsm
+    , time
+    , unix
+    , uuid
+    , vector
+    , yaml
+  default-language: Haskell2010
+
+test-suite thfsm-test
+  type: exitcode-stdio-1.0
+  main-is: Spec.hs
+  other-modules:
+      Paths_thfsm
+  hs-source-dirs:
+      test
+  default-extensions:
+      OverloadedStrings
+      DuplicateRecordFields
+      OverloadedRecordDot
+  ghc-options: -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      aeson
+    , base >=4.7 && <5
+    , bytestring
+    , containers
+    , deepseq
+    , directory
+    , filepath
+    , gitrev
+    , hashable
+    , mtl
+    , optparse-applicative
+    , scientific
+    , text
+    , thfsm
+    , time
+    , unix
+    , uuid
+    , vector
+    , yaml
+  default-language: Haskell2010
