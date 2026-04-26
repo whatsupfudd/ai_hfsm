@@ -34,6 +34,7 @@ library
       Demo.ApprovalHfsm
       Demo.ApprovalRuntime
       Demo.MemoryStore
+      Demo.Print
       Hfsm.Check.Report
       Hfsm.Compile
       Hfsm.Compile.Exec

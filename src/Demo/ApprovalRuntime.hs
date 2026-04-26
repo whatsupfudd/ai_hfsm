@@ -28,7 +28,8 @@ import Demo.MemoryStore
   , storeOf
   )
 
-import Hfsm.Render.Print (ppMachine)
+import Hfsm.Render.Print (ppStoreView)
+import Demo.Print (ppRunState, printRuntimeStore)
 
 testA :: IO ()
 testA = do
@@ -55,8 +56,6 @@ testA = do
 
   inst <- createInstance store compiled initialCtx
 
-  putStrLn $ "@[testA] machine: " <> show (ppMachine compiled)
-
   enqueueSignal store inst (SubmitSg "alice")
   enqueueSignal store inst (RejectSg "bob" "needs legal note")
   enqueueSignal store inst (ResubmitSg "alice")
@@ -74,12 +73,12 @@ testA = do
   runTick cfg storeImpl registry
 
   final <- loadInstanceView store inst
-  print $ Ae.encode final
+  printRuntimeStore final
 
 initialCtx :: ApprovalCtx
 initialCtx =
   ApprovalCtx
-    { title = "Gold custody note"
+    { title = "Items custody note"
     , author = ""
     , revision = 0
     , approvedBy = Nothing

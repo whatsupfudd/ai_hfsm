@@ -380,6 +380,24 @@ emptyReactEnv =
     , timer = mempty
     }
 
+renderReactErr :: ReactErr -> Text
+renderReactErr err =
+  case err of
+    DecodeREr msg -> "decode error: " <> msg
+    RejectREr msg -> "reject error: " <> msg
+    DomainEr msg -> "domain error: " <> msg
+    InvariantEr msg -> "invariant error: " <> msg
+
+mapLeft :: (a -> b) -> Either a x -> Either b x
+mapLeft f rez =
+  case rez of
+    Left x -> Left (f x)
+    Right x -> Right x
+
+showText :: Show a => a -> Text
+showText = T.pack . show
+
+-- Just for a simple test:
 demoPure :: IO ()
 demoPure =
   case approvalSpec of
@@ -389,7 +407,7 @@ demoPure =
     Right spec -> do
       let initialCtx =
             ApprovalCtx
-              { title = "Gold custody note"
+              { title = "Items custody note"
               , author = ""
               , revision = 0
               , approvedBy = Nothing
@@ -410,20 +428,3 @@ demoPure =
 
         Right final ->
           print final
-
-renderReactErr :: ReactErr -> Text
-renderReactErr err =
-  case err of
-    DecodeREr msg -> "decode error: " <> msg
-    RejectREr msg -> "reject error: " <> msg
-    DomainEr msg -> "domain error: " <> msg
-    InvariantEr msg -> "invariant error: " <> msg
-
-mapLeft :: (a -> b) -> Either a x -> Either b x
-mapLeft f rez =
-  case rez of
-    Left x -> Left (f x)
-    Right x -> Right x
-
-showText :: Show a => a -> Text
-showText = T.pack . show
