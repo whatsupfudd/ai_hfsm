@@ -33,6 +33,7 @@ library
       DB.Opers
       Demo.ApprovalHfsm
       Demo.ApprovalRuntime
+      Demo.MemoryStore
       Hfsm.Check.Report
       Hfsm.Compile
       Hfsm.Compile.Exec
@@ -60,6 +61,8 @@ library
       Hfsm.Proj.Rebuild
       Hfsm.Proj.Trace
       Hfsm.Proj.Tree
+      Hfsm.Render.Print
+      Hfsm.Runtime.Engine.Break
       Hfsm.Runtime.Engine.Step
       Hfsm.Runtime.Engine.Worker
       Hfsm.Runtime.Model
@@ -114,6 +117,7 @@ library
     , mtl
     , optparse-applicative
     , scientific
+    , stm
     , text
     , time
     , transformers
@@ -147,6 +151,7 @@ executable thfsm
     , mtl
     , optparse-applicative
     , scientific
+    , stm
     , text
     , thfsm
     , time
@@ -182,6 +187,7 @@ test-suite thfsm-test
     , mtl
     , optparse-applicative
     , scientific
+    , stm
     , text
     , thfsm
     , time

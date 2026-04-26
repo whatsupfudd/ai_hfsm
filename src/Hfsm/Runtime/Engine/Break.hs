@@ -9,14 +9,19 @@ import Data.Time.Calendar (fromGregorian)
 import Data.Time.Clock (UTCTime(..), secondsToDiffTime)
 import Data.UUID (UUID)
 
+import Hfsm.Core.Ref (StateRef)
 import Hfsm.Runtime.Engine.Step (StepInput(..), StepPlan(..))
+import Hfsm.Runtime.Model.Instance (InstanceRw(..))
+
 import Hfsm.Runtime.Model
   ( BreakKind(..)
   , BreakRw(..)
   , BreakStatus(..)
   , StepKind(..)
+  , StepRw(..)
   )
 import Hfsm.Store.Class (BreakAppend(..), Store(..))
+
 
 matchBreaks :: [BreakRw] -> StepInput -> StepPlan -> [BreakRw]
 matchBreaks breakRws stepInput stepPlan =
@@ -66,7 +71,7 @@ breakTargetsState stepPlan breakRw =
     Nothing -> True
     Just stateRef -> stateRef == phaseStateRef breakRw.kind stepPlan
 
-phaseStateRef :: BreakKind -> StepPlan -> _
+phaseStateRef :: BreakKind -> StepPlan -> StateRef
 phaseStateRef breakKind stepPlan =
   case breakKind of
     BeforeCaseBk -> stepPlan.step.from

@@ -16,9 +16,19 @@ import Hfsm.Runtime.Registry (emptyRegistry, register)
 import Hfsm.Validate.Report (ok, validate)
 import Data.UUID (UUID)
 import qualified Data.UUID.V4 as Uu
-import Data.Aeson (Value)
-import Hfsm.Store.Class (Store)
 
+import qualified Data.Aeson as Ae
+
+import Hfsm.Store.Class (Store)
+import Demo.MemoryStore
+  ( createInstance
+  , enqueueSignal
+  , loadInstanceView
+  , newMemoryStore
+  , storeOf
+  )
+
+import Hfsm.Render.Print (ppMachine)
 
 testA :: IO ()
 testA = do
@@ -45,6 +55,8 @@ testA = do
 
   inst <- createInstance store compiled initialCtx
 
+  putStrLn $ "@[testA] machine: " <> show (ppMachine compiled)
+
   enqueueSignal store inst (SubmitSg "alice")
   enqueueSignal store inst (RejectSg "bob" "needs legal note")
   enqueueSignal store inst (ResubmitSg "alice")
@@ -54,14 +66,15 @@ testA = do
 
   let
     cfg = WorkerCfg { batchSize = 10, pollDelayMs = 100, leaseSeconds = 30, node = demoNodeId }
+    storeImpl = storeOf store
 
-  runTick cfg store registry
-  runTick cfg store registry
-  runTick cfg store registry
-  runTick cfg store registry
+  runTick cfg storeImpl registry
+  runTick cfg storeImpl registry
+  runTick cfg storeImpl registry
+  runTick cfg storeImpl registry
 
   final <- loadInstanceView store inst
-  print final
+  print $ Ae.encode final
 
 initialCtx :: ApprovalCtx
 initialCtx =
@@ -73,18 +86,3 @@ initialCtx =
     , rejectedBy = Nothing
     , rejectReason = Nothing
     }
-
--- Unimplemented concrete store and instance functions:
-type StoreImpl = Store IO
-
-newMemoryStore :: IO StoreImpl
-newMemoryStore = undefined
-
-createInstance :: StoreImpl -> CompiledMachine Phase Signal Handoff ApprovalCtx Cmd ChildKey -> ApprovalCtx -> IO UUID
-createInstance store compiled ctx = undefined
-
-enqueueSignal :: StoreImpl -> UUID -> Signal -> IO ()
-enqueueSignal store inst signal = undefined
-
-loadInstanceView :: StoreImpl -> UUID -> IO Value
-loadInstanceView store inst = undefined

@@ -45,7 +45,8 @@ dependencies:
   # For Cont(T):
   - mtl
   - transformers
-
+  # For Distributed processes:
+  - stm
 
 default-extensions:
 - OverloadedStrings
