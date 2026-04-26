@@ -27,9 +27,14 @@ library
   exposed-modules:
       Commands
       Commands.Help
+      Commands.Test
       Commands.Version
       DB.Connect
       DB.Opers
+      Demo.ApprovalHfsm
+      Demo.ApprovalRuntime
+      Hfsm.Check.Report
+      Hfsm.Compile
       Hfsm.Compile.Exec
       Hfsm.Core
       Hfsm.Core.Codec
@@ -41,15 +46,22 @@ library
       Hfsm.Core.Ref
       Hfsm.Core.Version
       Hfsm.Export.Graphviz
+      Hfsm.Export.Json
       Hfsm.Export.Mermaid
       Hfsm.Export.Scxml
       Hfsm.Graph.Def
       Hfsm.Graph.Index
+      Hfsm.Migrate.Check
+      Hfsm.Migrate.Diff
+      Hfsm.Migrate.Plan
+      Hfsm.Migrate.Run
       Hfsm.Proj.Active
       Hfsm.Proj.Queue
       Hfsm.Proj.Rebuild
       Hfsm.Proj.Trace
       Hfsm.Proj.Tree
+      Hfsm.Runtime.Engine.Step
+      Hfsm.Runtime.Engine.Worker
       Hfsm.Runtime.Model
       Hfsm.Runtime.Model.Break
       Hfsm.Runtime.Model.Child
@@ -58,6 +70,7 @@ library
       Hfsm.Runtime.Model.Signal
       Hfsm.Runtime.Model.Snapshot
       Hfsm.Runtime.Model.Step
+      Hfsm.Runtime.Registry
       Hfsm.Spec.Build
       Hfsm.Spec.Case
       Hfsm.Spec.Def
@@ -103,6 +116,7 @@ library
     , scientific
     , text
     , time
+    , transformers
     , unix
     , uuid
     , vector
@@ -136,6 +150,7 @@ executable thfsm
     , text
     , thfsm
     , time
+    , transformers
     , unix
     , uuid
     , vector
@@ -170,6 +185,7 @@ test-suite thfsm-test
     , text
     , thfsm
     , time
+    , transformers
     , unix
     , uuid
     , vector

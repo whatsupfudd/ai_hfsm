@@ -618,13 +618,13 @@ resolveRouteCaseName graph mbCaseRef =
 routeTargetSig :: MachineGraph -> RouteTarget -> RouteTargetSig
 routeTargetSig graph routeTarget =
   case routeTarget of
-    StayTg -> StayTs
-    GotoTg stateRef ->
+    StayRt -> StayTs
+    GotoRt stateRef ->
       case lookupState graph stateRef of
         Just stateNd -> GotoTs (statePathKey graph stateNd.path)
         Nothing -> GotoTs (StatePathK ["#state-" <> tshow (stateRefWord32 stateRef)])
-    CompleteTg -> CompleteTs
-    FailTg msg -> FailTs msg
+    CompleteRt -> CompleteTs
+    FailRt msg -> FailTs msg
 
 waitSig :: MachineGraph -> WaitPlanG -> WaitSig
 waitSig graph waitPlan =

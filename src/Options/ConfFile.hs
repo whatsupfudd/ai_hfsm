@@ -29,12 +29,12 @@ data FileOptions = FileOptions {
 
 defaultConfName :: FilePath
 -- HERE: modify config file to .config/thfsm.yaml or .thfsm/config.yaml
-defaultConfName = ".fudd/thfsm/config.yaml"
+defaultConfName = ".fudd/simple.yaml"
 
 
 defaultConfigFilePath :: IO (Either String FilePath)
 defaultConfigFilePath = do
-  eiHomeDir <- Cexc.try $ Sdir.getHomeDirectory :: IO (Either Serr.IOError FilePath)
+  eiHomeDir <- Cexc.try Sdir.getHomeDirectory :: IO (Either Serr.IOError FilePath)
   case eiHomeDir of
     Left err -> pure . Left $ "@[defaultConfigFilePath] err: " <> show err
     Right aPath -> pure . Right $ Spsx.joinPath [aPath, defaultConfName]

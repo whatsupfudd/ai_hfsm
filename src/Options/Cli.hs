@@ -25,17 +25,13 @@ data GlobalOptions = GlobalOptions {
 data Command =
   HelpCmd
   | VersionCmd
-  -- HERE: New command types:
-  -- Eg: | ImportCmd Text Text
+  | TestCmd TestOpts
   deriving stock (Show)
 
-{- HERE: Additional structures for holding new command parameters:
-Eg:
-data ImportOpts = ImportOpts {
-    taxonomy :: Text
-    , path :: Text
+newtype TestOpts = TestOpts {
+  testName :: Text
   }
--}
+  deriving stock (Show)
 
 parseCliOptions :: IO (Either String CliOptions)
 parseCliOptions =
@@ -96,8 +92,7 @@ commandDefs =
     cmdArray = [
       ("help", pure HelpCmd, "Help about any command.")
       , ("version", pure VersionCmd, "Shows the version number of importer.")
-      -- HERE: additional commands:
-      -- Eg: ("import", importOpts, "Loads up a path into BeeBoD.")
+      , ("test", TestCmd <$> testOpts, "Runs a test.")
       ]
     headArray = head cmdArray
     tailArray = tail cmdArray
@@ -107,10 +102,6 @@ commandDefs =
     cmdBuilder (label, cmdDef, desc) =
       command label (info cmdDef (progDesc desc))
 
-{- HERE: additional options parser:
-Eg:
-importOpts :: Parser Command
-importOpts =
-  ImportCmd <$> strArgument (metavar "TAXO" <> help "Taxonomy root where paths are inserted.")
-    <*> strArgument (metavar "PATH" <> help "Directory to import into Beebod.")
--}
+testOpts :: Parser TestOpts
+testOpts =
+  TestOpts <$> strArgument (metavar "TESTNAME" <> help "Name of the test to run.")

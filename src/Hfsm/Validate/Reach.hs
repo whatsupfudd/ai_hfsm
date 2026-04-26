@@ -30,10 +30,10 @@ import Hfsm.Graph.Def
   , MachineGraph (..)
   , RegionNd (..)
   , RouteEd (..)
+  , RoutePlan(..)
   , RouteTarget(..)
   , StateNd (..)
   , WaitPlanG(..)
-  , RoutePlan(..)
   )
 import Hfsm.Spec.Def (StateKind(..))
 import Hfsm.Validate.Error
@@ -233,10 +233,10 @@ gotoTargets graph stNd =
 routeGotoTarget :: RouteEd -> Maybe StateRef
 routeGotoTarget rtEd =
   case rtEd.plan.target of
-    GotoTg stRef -> Just stRef
-    StayTg -> Nothing
-    CompleteTg -> Nothing
-    FailTg _ -> Nothing
+    GotoRt stRef -> Just stRef
+    StayRt -> Nothing
+    CompleteRt -> Nothing
+    FailRt _ -> Nothing
 
 reverseSuccessorsByState :: IntMap (Set StateRef) -> IntMap (Set StateRef)
 reverseSuccessorsByState forwardAdj =
@@ -268,10 +268,10 @@ pureStructuralRouteTarget srcRef rtEd
   | not (isPureStructuralRoute rtEd) = Nothing
   | otherwise =
       case rtEd.plan.target of
-        StayTg -> Just srcRef
-        GotoTg dstRef -> Just dstRef
-        CompleteTg -> Nothing
-        FailTg _ -> Nothing
+        StayRt -> Just srcRef
+        GotoRt dstRef -> Just dstRef
+        CompleteRt -> Nothing
+        FailRt _ -> Nothing
 
 isPureStructuralState :: MachineGraph -> Set StateRef -> StateNd -> Bool
 isPureStructuralState graph reachable stNd =
@@ -286,10 +286,10 @@ isPureStructuralRoute rtEd =
     && rtEd.plan.join == JoinNoneJg
     && null rtEd.plan.timers
     && case rtEd.plan.target of
-         StayTg -> True
-         GotoTg _ -> True
-         CompleteTg -> False
-         FailTg _ -> False
+         StayRt -> True
+         GotoRt _ -> True
+         CompleteRt -> False
+         FailRt _ -> False
 
 isExitSurfaceState :: MachineGraph -> StateNd -> Bool
 isExitSurfaceState graph stNd =
@@ -298,10 +298,10 @@ isExitSurfaceState graph stNd =
 routeIsDirectExit :: RouteEd -> Bool
 routeIsDirectExit rtEd =
   case rtEd.plan.target of
-    CompleteTg -> True
-    FailTg _ -> True
-    StayTg -> False
-    GotoTg _ -> False
+    CompleteRt -> True
+    FailRt _ -> True
+    StayRt -> False
+    GotoRt _ -> False
 
 childInitialTarget :: MachineGraph -> StateNd -> Set StateRef
 childInitialTarget graph stNd =
@@ -367,12 +367,10 @@ stateRefKey :: StateRef -> Int
 stateRefKey = fromIntegral . stateRefWord32
 
 intKeyToStateRef :: Int -> StateRef
-intKeyToStateRef = toEnum
-  {-
+intKeyToStateRef = fromIntegral >>> toEnum
   where
     (>>>) :: (a -> b) -> (b -> c) -> a -> c
     f >>> g = g . f
-  -}
 
 quote :: Text -> Text
 quote txt = "\"" <> txt <> "\""

@@ -74,8 +74,8 @@ data ReactRez ctx hf cmd = ReactRez
   deriving stock (Eq, Show, Read)
 
 data ReactErr
-  = DecodeEr Text
-  | RejectEr Text
+  = DecodeREr Text
+  | RejectREr Text
   | DomainEr Text
   | InvariantEr Text
   deriving stock (Eq, Ord, Show, Read)
@@ -175,7 +175,7 @@ addNote rawNote rez =
 
 addNotes :: [Text] -> ReactRez ctx hf cmd -> ReactRez ctx hf cmd
 addNotes notes' rez =
-  foldl' (\acc msg -> addNote msg acc) rez notes'
+  foldl' (flip addNote) rez notes'
 
 mapNext :: (ctx1 -> ctx2) -> ReactRez ctx1 hf cmd -> ReactRez ctx2 hf cmd
 mapNext f rez =
@@ -205,10 +205,10 @@ mapCmd f rez =
     }
 
 decodeErr :: Text -> ReactErr
-decodeErr = DecodeEr
+decodeErr = DecodeREr
 
 rejectErr :: Text -> ReactErr
-rejectErr = RejectEr
+rejectErr = RejectREr
 
 domainErr :: Text -> ReactErr
 domainErr = DomainEr
@@ -219,8 +219,8 @@ invariantErr = InvariantEr
 renderReactErr :: ReactErr -> Text
 renderReactErr err =
   case err of
-    DecodeEr msg -> "reaction decode error: " <> msg
-    RejectEr msg -> "reaction rejected: " <> msg
+    DecodeREr msg -> "reaction decode error: " <> msg
+    RejectREr msg -> "reaction rejected: " <> msg
     DomainEr msg -> "reaction domain error: " <> msg
     InvariantEr msg -> "reaction invariant error: " <> msg
 

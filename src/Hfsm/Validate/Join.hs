@@ -19,7 +19,6 @@ import Hfsm.Graph.Def
   , RouteEd(..)
   , SpawnPlanG(..)
   , WaitPlanG(..)
-  , RoutePlan(..)
   )
 import Hfsm.Validate.Error
   ( ValidateErr
@@ -27,7 +26,7 @@ import Hfsm.Validate.Error
   , errorErr
   , warnErr
   )
-
+import Hfsm.Graph.Def (RoutePlan(..))
 
 checkJoin :: MachineGraph -> [ValidateErr]
 checkJoin graph =

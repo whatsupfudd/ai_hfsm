@@ -99,11 +99,11 @@ import Hfsm.Core.Name
 import Hfsm.Core.Version (MachineVersion)
 import Hfsm.Spec.Case
   ( CaseFn
-  , CaseSpec (..)
+  , CaseSpec(..)
   , EntryFn
   , ReactEnv
   , ReactErr
-  , ReactRez (..)
+  , ReactRez
   , mapHandoff
   , rejectErr
   )
@@ -120,7 +120,8 @@ import Hfsm.Spec.Route
   )
 
 newtype LowerHandoff hk hf = LowerHandoff
-  { lowerFct :: forall phase. hk phase -> hf }
+  { lower :: forall phase. hk phase -> hf
+  }
 
 type EntryFnIx phase ctx hk cmd =
   ReactEnv -> ctx -> Either ReactErr (ReactRez ctx (hk phase) cmd)
@@ -171,12 +172,10 @@ data MachineSpecIx st sg sgk hk ctx cmd child = MachineSpecIx
   }
 
 mkLowerHandoff :: (forall phase. hk phase -> hf) -> LowerHandoff hk hf
-mkLowerHandoff lowerFn = LowerHandoff { lowerFct = lowerFn }
+mkLowerHandoff lowerFn = LowerHandoff { lower = lowerFn }
 
-
--- TODO: find out why the lowerH.lowerFct doesn't work, but the (lowerFct lowerH) does.
 lowerReactRezIx :: LowerHandoff hk hf -> ReactRez ctx (hk phase) cmd -> ReactRez ctx hf cmd
-lowerReactRezIx lowerH = mapHandoff (lowerFct lowerH)
+lowerReactRezIx lowerH = mapHandoff (lower lowerH)
 
 lowerEntryFnIx :: LowerHandoff hk hf -> EntryFnIx phase ctx hk cmd -> EntryFn ctx hf cmd
 lowerEntryFnIx lowerH entryFn env ctx =
@@ -203,7 +202,7 @@ lowerCaseSpecIx lowerH caseIx =
 lowerRouteSpecIx :: LowerHandoff hk hf -> RouteSpecIx phase st hk child -> RouteSpec st hf child
 lowerRouteSpecIx lowerH routeIx =
   RouteSpec
-    { on = lowerFct lowerH routeIx.on
+    { on = lower lowerH routeIx.on
     , plan = normalizeControlPlan routeIx.plan
     , meta = routeIx.meta
     }

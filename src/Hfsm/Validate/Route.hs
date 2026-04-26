@@ -166,7 +166,6 @@ checkCaseOwnership graph =
              | S.notMember caseRef referencedCases || not (stateReferencesCase st caseRef)
              ]
 
-
 checkRouteStateRefs :: MachineGraph -> [ValidateErr]
 checkRouteStateRefs graph =
   concatMap checkRouteEd (routeNodes graph)
@@ -266,14 +265,14 @@ checkRouteTargets graph =
     checkRouteEd :: RouteEd -> [ValidateErr]
     checkRouteEd route =
       case route.plan.target of
-        GotoTg targetRef ->
+        GotoRt targetRef ->
           [ routeErr route.ref "route.target.missing"
               ("route " <> renderRouteRef route.ref <> " targets missing state " <> renderStateRef targetRef)
           | lookupState graph targetRef == Nothing
           ]
-        StayTg -> []
-        CompleteTg -> []
-        FailTg _ -> []
+        StayRt -> []
+        CompleteRt -> []
+        FailRt _ -> []
 
 checkRoutePlanRefs :: MachineGraph -> [ValidateErr]
 checkRoutePlanRefs graph =
@@ -386,6 +385,7 @@ checkTimerPlans graph route =
   duplicateTimerErrs route <> concatMap checkTimerPlan route.plan.timers
   where
     routeRef = route.ref
+
     checkTimerPlan :: TimerPlanG -> [ValidateErr]
     checkTimerPlan timerPlan =
       [ routeErr routeRef "route.timer.missing"
@@ -552,7 +552,6 @@ lookupTimer :: MachineGraph -> TimerRef -> Maybe TimerNd
 lookupTimer graph timerRef =
   IM.lookup (key32 (timerRefWord32 timerRef)) graph.timers
 
--- TODO: figure our how this becomes a list as expected by other logic using it.
 joinPlanRef :: JoinPlanG -> Maybe JoinRef
 joinPlanRef joinPlan =
   case joinPlan of
@@ -585,18 +584,18 @@ modeMatchesCount count joinMode =
 isCompletionTarget :: RouteTarget -> Bool
 isCompletionTarget target =
   case target of
-    CompleteTg -> True
-    FailTg _ -> True
-    StayTg -> False
-    GotoTg _ -> False
+    CompleteRt -> True
+    FailRt _ -> True
+    StayRt -> False
+    GotoRt _ -> False
 
 renderCompletionTarget :: RouteTarget -> Text
 renderCompletionTarget target =
   case target of
-    CompleteTg -> "completion target"
-    FailTg msg -> "failure target " <> quoteText msg
-    StayTg -> "stay target"
-    GotoTg stRef -> "goto target " <> renderStateRef stRef
+    CompleteRt -> "completion target"
+    FailRt msg -> "failure target " <> quoteText msg
+    StayRt -> "stay target"
+    GotoRt stRef -> "goto target " <> renderStateRef stRef
 
 renderJoinMode :: JoinMode -> Text
 renderJoinMode joinMode =

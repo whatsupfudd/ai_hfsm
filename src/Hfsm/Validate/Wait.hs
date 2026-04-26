@@ -91,16 +91,16 @@ checkWaitTarget routeEd
   | not (hasWait routeEd.plan.wait) = []
   | otherwise =
       case routeEd.plan.target of
-        CompleteTg ->
+        CompleteRt ->
           [ routeError routeEd "wait.target.complete" $
               routeDiagHeader routeEd <> " cannot both wait and complete"
           ]
-        FailTg _ ->
+        FailRt _ ->
           [ routeError routeEd "wait.target.fail" $
               routeDiagHeader routeEd <> " cannot both wait and fail"
           ]
-        StayTg -> []
-        GotoTg _ -> []
+        StayRt -> []
+        GotoRt _ -> []
 
 checkWaitJoinConsistency :: RouteEd -> [ValidateErr]
 checkWaitJoinConsistency routeEd =

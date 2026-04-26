@@ -107,10 +107,10 @@ data RoutePlan = RoutePlan
   deriving stock (Eq, Ord, Show, Read, Generic)
 
 data RouteTarget
-  = StayTg
-  | GotoTg StateRef
-  | CompleteTg
-  | FailTg Text
+  = StayRt
+  | GotoRt StateRef
+  | CompleteRt
+  | FailRt Text
   deriving stock (Eq, Ord, Show, Read, Generic)
 
 data WaitPlanG

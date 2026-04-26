@@ -5,7 +5,6 @@ module Hfsm.Proj.Rebuild
   ) where
 
 import Control.Applicative ((<|>))
-
 import Data.List (foldl', sortOn)
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as M
@@ -17,18 +16,19 @@ import Data.UUID (UUID)
 
 import Data.Aeson (Value)
 
+import Hfsm.Core.Ref (StateRef (..))
+
 import Hfsm.Proj.Active (ActiveProj (..), activeFromRows, touchActive)
 import Hfsm.Proj.Queue (renderWaitKind, waitKindFromValue)
 import Hfsm.Proj.Trace (TraceProj (..), sortTraceProjAsc, traceProjFromSteps)
 import Hfsm.Proj.Tree (TreeProj (..), attachBlockedDesc, mkTreeProj, sortTreeProj)
-import Hfsm.Runtime.Model (
-    ChildRw (..)
+import Hfsm.Runtime.Model
+  ( ChildRw (..)
   , InstanceRw (..)
-  , InstanceStatus(..)
+  , InstanceStatus (..)
   , SnapshotRw (..)
   , StepRw (..)
   )
-
 
 rebuildActive :: [InstanceRw] -> [SnapshotRw] -> [StepRw] -> [ActiveProj]
 rebuildActive insts snaps steps =
