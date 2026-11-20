@@ -7,6 +7,7 @@ module Hfsm.Store.Postgres
   ( Runner(..), runWithPool
   , NewInstance(..), EnqueueRq(..)
   , postgresStore
+  , postgresStoreForInstance
   , registerMachine, initializeInstance, enqueue
   ) where
 
@@ -40,11 +41,20 @@ import qualified Hfsm.Store.Postgres.Transaction as X
 -- The CT-01 Store interface does not expose errors for read/claim operations.
 -- Such errors are therefore raised as IO exceptions rather than suppressed.
 postgresStore :: Runner -> Store IO
-postgresStore runner = Store
+postgresStore runner =  postgresStoreScoped Nothing runner
+
+
+postgresStoreForInstance :: Runner -> UUID -> Store IO
+postgresStoreForInstance runner instanceId = postgresStoreScoped (Just instanceId) runner
+
+
+postgresStoreScoped :: Maybe UUID -> Runner -> Store IO
+postgresStoreScoped instanceFilter runner =
+  Store
   { leaseSignal = \rq -> do
       let n = fromIntegral (max 1 (min 100 rq.batchSize)) :: Int32
           secs = fromIntegral (max 1 (min 3600 rq.leaseSeconds)) :: Int32
-      vals <- require runner (writeTx (X.claimSignalsTx n rq.node secs))
+      vals <- require runner (writeTx (X.claimSignalsTx n rq.node secs instanceFilter))
       rows <- requireDecoded (traverse decodeValue (V.toList vals))
       pure (if null rows then LeaseNoneLz else LeaseSomeLz rows)
   , loadInstance = \i -> do

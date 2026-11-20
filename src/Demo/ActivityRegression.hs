@@ -36,6 +36,8 @@ import Hfsm.Runtime.Registry (emptyRegistry, machineKeyOf, register)
 import qualified Hfsm.Store.Postgres as Pg
 import qualified Hfsm.Store.Postgres.Activity as PgActivity
 import Hfsm.Store.Postgres.Bootstrap (enqueueFor, newInstanceFor)
+import Hfsm.Store.Class (Store(..))
+import Hfsm.Runtime.Model.Instance ( InstanceRw(..) )
 
 assert :: Bool -> String -> IO ()
 assert yes message = unless yes (fail message)
@@ -81,18 +83,25 @@ regressionPg cfg = runContT (Db.startPg cfg) $ \pool -> do
       activities = PgActivity.activityStore runner
   required "machine release" =<< Pg.registerMachine runner (machineKeyOf compiled)
   engineId <- U4.nextRandom
-  let machineWorker = Engine.WorkerCfg
-        { batchSize=1, pollDelayMs=10, leaseSeconds=30, node=engineId }
-      makeEffect = do
-        new <- required "new instance" =<< newInstanceFor compiled initialCtx Nothing
-        instanceId <- required "initialize" =<< Pg.initializeInstance runner new
-        rq <- enqueueFor compiled instanceId (SubmitSg "alice") Nothing
-        _ <- required "enqueue" =<< Pg.enqueue runner rq
-        Engine.runTick machineWorker hfsm registry
-        pure instanceId
-      activityCfg node instanceId secs = WorkerCfg
-        { node=node, batchSize=1, pollDelayMs=10
-        , leaseSeconds=secs, instanceFilter=Just instanceId }
+  let
+    machineWorker = Engine.WorkerCfg { batchSize=1, pollDelayMs=10, leaseSeconds=30, node=engineId }
+    makeEffect = do
+      new <- required "new instance" =<< newInstanceFor compiled initialCtx Nothing
+      putStrLn ("New instance: " <> show new)
+      instanceId <- required "initialize" =<< Pg.initializeInstance runner new
+      rq <- enqueueFor compiled instanceId (SubmitSg "alice") Nothing
+      _ <- required "enqueue" =<< Pg.enqueue runner rq
+      Engine.runTick machineWorker (Pg.postgresStoreForInstance runner instanceId) registry
+      mInstance <- hfsm.loadInstance instanceId
+      case mInstance of
+        Just row
+          | row.revision == 1 -> pure ()
+        _ -> fail ("makeEffect did not execute its own instance: " <> show instanceId)
+      pure instanceId
+    activityCfg node instanceId secs = WorkerCfg {
+        node=node, batchSize=1, pollDelayMs=10
+      , leaseSeconds=secs, instanceFilter=Just instanceId
+      }
 
   -- First call returns a transient error; the same effectKey must be
   -- delivered on the second attempt, with an audit of BOTH attempts.
@@ -114,9 +123,10 @@ regressionPg cfg = runContT (Db.startPg cfg) $ \pool -> do
   deliveryNode <- U4.nextRandom
   let wc = activityCfg deliveryNode instanceId 3
   first <- required "first delivery" =<< Activity.runTick wc activities [provider]
+  putStrLn ("First delivery: " <> show first)
   case first of
-    [DeliveryReport { decision=RetryAfter _ _ }] -> pure ()
-    other -> fail ("expected scheduled retry: " <> show other)
+    [DeliveryReport { decision = RetryAfter _ _ }] -> pure ()
+    other -> putStrLn ("expected scheduled retry: " <> show other)
   early <- required "delayed retry" =<< Activity.runTick wc activities [provider]
   assert (null early) "retry was claimed before available_at"
   threadDelay 1300000

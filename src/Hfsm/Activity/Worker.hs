@@ -121,5 +121,4 @@ microseconds seconds = fromInteger $ max 1000 $ min (toInteger (maxBound :: Int)
   (toInteger (max 1 seconds) * 1000000)
 
 sleepMs :: Int -> IO ()
-sleepMs delay = unless (delay <= 0) $ threadDelay
-  (fromIntegral (min 2147483 delay) * 1000)
+sleepMs delay = unless (delay <= 0) $ threadDelay ((min 2147483 delay) * 1000)

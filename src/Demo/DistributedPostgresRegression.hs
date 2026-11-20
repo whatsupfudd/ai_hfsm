@@ -77,8 +77,21 @@ regressionPg config = runContT (Db.startPg config) $ \pool -> do
   a <- U4.nextRandom
   b <- U4.nextRandom
   now <- getCurrentTime
-  let claim node = LeaseRq { node = node, batchSize = 1, leaseSeconds = 30, now = now }
+
+  let
+    claim node = LeaseRq { node = node, batchSize = 1, leaseSeconds = 30, now = now }
+    testApi = Pg.postgresStoreForInstance runner inst
+
   claims <- competingClaims api (claim a) (claim b)
+
+  putStrLn ("Expected instance: " <> show inst)
+  mapM_ (\s -> putStrLn
+      ("Claimed instance=" <> show s.inst
+        <> " signal=" <> show s.uuid
+        <> " ordinal=" <> show s.ordinal
+        <> " lease=" <> show s.lease)
+    ) claims
+
   assert (length claims == 1) ("Many workers leased the same instance concurrently: " <> (show. length $ claims))
   let sig = head claims
   assert (sig.ordinal == 1) "Wrong FIFO ordinal admitted"

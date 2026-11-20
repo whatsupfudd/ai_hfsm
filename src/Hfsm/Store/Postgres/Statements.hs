@@ -67,7 +67,8 @@ listSignals = [vectorStatement|
 -- locked before the corresponding signal rows are modified. The LATERAL query
 -- always picks the oldest non-terminal signal; it never skips a live lease.
 -- This statement sets a NEW gen_random_uuid fencing token on every reclaim.
-claimSignals :: Statement (Int32, UUID, Int32) (Vector Value)
+-- claimSignals :: Statement (Int32, UUID, Int32) (Vector Value)
+claimSignals :: Statement (Int32, UUID, Int32, Maybe UUID) (Vector Value)
 claimSignals = [vectorStatement|
   WITH candidates AS MATERIALIZED (
     SELECT i.id AS instance_id, oldest.id AS signal_id
@@ -82,6 +83,7 @@ claimSignals = [vectorStatement|
       AND (i.in_flight_signal_id IS NULL OR i.in_flight_lease_until <= clock_timestamp())
       AND ((oldest.status = 'entered' AND oldest.ready_at <= clock_timestamp())
            OR (oldest.status = 'leased' AND oldest.lease_until <= clock_timestamp()))
+      AND (($4 :: uuid?) IS NULL OR i.id = $4 :: uuid?)
     ORDER BY i.updated_at, i.uid
     LIMIT $1 :: int4
     FOR UPDATE OF i SKIP LOCKED

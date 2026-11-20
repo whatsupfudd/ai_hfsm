@@ -197,9 +197,9 @@ renewLeaseTx rq = do
             _ -> abort (LeaseLostEr "renewLease: expired/stale lease")
 
 
-claimSignalsTx :: Int32 -> UUID -> Int32 -> Tx.Transaction (Vector Value)
-claimSignalsTx amount node seconds =
-  Tx.statement (amount, node, seconds) S.claimSignals
+claimSignalsTx :: Int32 -> UUID -> Int32 -> Maybe UUID -> Tx.Transaction (Vector Value)
+claimSignalsTx amount node seconds instanceFilter =
+  Tx.statement (amount, node, seconds, instanceFilter) S.claimSignals
 
 registerReleaseTx :: MachineKey -> Tx.Transaction ()
 registerReleaseTx key = Tx.statement
