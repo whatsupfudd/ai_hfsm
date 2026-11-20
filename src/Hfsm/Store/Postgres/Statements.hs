@@ -24,6 +24,7 @@ loadInstance = [maybeStatement|
     'version', i.machine_version, 'digest', i.spec_digest,
     'status', i.status, 'state', i.current_state_ref,
     'path', i.current_path, 'snap', i.current_snapshot_id,
+    'revision', i.revision, 'nextSignalOrdinal', i.next_signal_ordinal,
     'parent', i.parent_instance_id, 'createdAt', i.created_at,
     'updatedAt', i.updated_at
   ) :: jsonb
@@ -53,6 +54,8 @@ listSignals = [vectorStatement|
        WHEN 'applied' THEN 'AppliedSs' WHEN 'rejected' THEN 'RejectedSs'
        ELSE 'FailedSs' END,
     'payload', s.payload, 'cause', s.cause, 'lease', s.lease_id,
+    'ordinal', s.ordinal, 'leaseOwner', s.lease_owner,
+    'leaseUntil', s.lease_until, 'attempts', s.attempts, 'readyAt', s.ready_at,
     'createdAt', s.created_at, 'updatedAt', s.updated_at
   ) :: jsonb
   FROM hfsm.signal s
@@ -89,21 +92,25 @@ claimSignals = [vectorStatement|
       lease_until = clock_timestamp() + ($3 :: int4 * interval '1 second'),
       attempts = s.attempts + 1, updated_at = clock_timestamp()
     FROM candidates c WHERE s.id = c.signal_id
-    RETURNING s.id, s.instance_id, s.lease_id, s.lease_until,
-              s.uid, s.payload, s.cause, s.created_at, s.updated_at
+    RETURNING s.id, s.instance_id, s.lease_id, s.lease_owner, s.lease_until,
+              s.ordinal, s.attempts, s.ready_at, s.uid, s.payload, s.cause,
+              s.created_at, s.updated_at
   ), admitted AS (
     UPDATE hfsm.instance AS i SET
       in_flight_signal_id = l.id, in_flight_lease_id = l.lease_id,
       in_flight_lease_until = l.lease_until
     FROM leased AS l WHERE i.id = l.instance_id
-    RETURNING l.id, l.instance_id, l.lease_id, l.uid,
+    RETURNING l.id, l.instance_id, l.lease_id, l.lease_owner, l.lease_until,
+              l.ordinal, l.attempts, l.ready_at, l.uid,
               l.payload, l.cause, l.created_at, l.updated_at
   )
   SELECT jsonb_build_object(
     'uid', a.uid, 'uuid', a.id, 'inst', a.instance_id,
     'status', 'LeasedSs', 'payload', a.payload, 'cause', a.cause,
-    'lease', a.lease_id, 'createdAt', a.created_at,
-    'updatedAt', a.updated_at
+    'lease', a.lease_id, 'ordinal', a.ordinal,
+    'leaseOwner', a.lease_owner, 'leaseUntil', a.lease_until,
+    'attempts', a.attempts, 'readyAt', a.ready_at,
+    'createdAt', a.created_at, 'updatedAt', a.updated_at
   ) :: jsonb FROM admitted AS a
 |]
 
@@ -118,10 +125,10 @@ lockInstance = [maybeStatement|
   FROM hfsm.instance WHERE id = $1 :: uuid FOR UPDATE
 |]
 
-lockSignal :: Statement UUID (Maybe (UUID, Text, Maybe UUID, Maybe UTCTime))
+lockSignal :: Statement UUID (Maybe (UUID, Text, Maybe UUID, Maybe UTCTime, Int64))
 lockSignal = [maybeStatement|
   SELECT instance_id :: uuid, status :: text, lease_id :: uuid?,
-         lease_until :: timestamptz?
+         lease_until :: timestamptz?, ordinal :: int8
   FROM hfsm.signal WHERE id = $1 :: uuid FOR UPDATE
 |]
 
@@ -302,4 +309,26 @@ insertSignal = [resultlessStatement|
 lookupSignalParent :: Statement UUID (Maybe UUID)
 lookupSignalParent = [maybeStatement|
   SELECT instance_id :: uuid FROM hfsm.signal WHERE id = $1 :: uuid
+|]
+
+-- CT-03: atomic lease renewal; caller holds instance+signal row locks.
+-- Each update is fenced and rejects expiration at the database server.
+renewSignalLease :: Statement (UUID, UUID, UTCTime) (Maybe UTCTime)
+renewSignalLease = [maybeStatement|
+  UPDATE hfsm.signal SET
+    lease_until = GREATEST(lease_until, $3 :: timestamptz),
+    updated_at = clock_timestamp()
+  WHERE id = $1 :: uuid AND status = 'leased'
+    AND lease_id = $2 :: uuid AND lease_until > clock_timestamp()
+  RETURNING lease_until :: timestamptz
+|]
+
+renewInstanceLease :: Statement (UUID, UUID, UUID, UTCTime) (Maybe UTCTime)
+renewInstanceLease = [maybeStatement|
+  UPDATE hfsm.instance SET
+    in_flight_lease_until = GREATEST(in_flight_lease_until, $4 :: timestamptz)
+  WHERE id = $1 :: uuid AND in_flight_signal_id = $2 :: uuid
+    AND in_flight_lease_id = $3 :: uuid
+    AND in_flight_lease_until > clock_timestamp()
+  RETURNING in_flight_lease_until :: timestamptz
 |]

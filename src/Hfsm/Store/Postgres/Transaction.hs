@@ -1,9 +1,7 @@
-{-# LANGUAGE NoFieldSelectors #-}
-
 -- | Transaction plans for CT-02A. Each operation is one Hasql.Transaction;
 -- failures are condemned and so cannot commit partial updates.
 module Hfsm.Store.Postgres.Transaction
-  ( commitTurnTx, ackFailureTx, claimSignalsTx
+  ( commitTurnTx, ackFailureTx, renewLeaseTx, claimSignalsTx
   , registerReleaseTx, createInstanceTx, enqueueTx
   ) where
 
@@ -12,7 +10,7 @@ import Data.Aeson (Value, toJSON)
 import Data.Int (Int32, Int64)
 import Data.Maybe (isJust)
 import Data.Text (Text)
-import Data.Time (UTCTime)
+import Data.Time (UTCTime, addUTCTime)
 import Data.UUID (UUID)
 import qualified Data.UUID as U
 import Data.Vector (Vector)
@@ -29,7 +27,7 @@ import Hfsm.Runtime.Model
   , InstanceRw(..), SignalRw(..) )
 import Hfsm.Runtime.Model.Instance (instanceStatusText)
 import Hfsm.Store.Class
-  ( StoreErr(..), CommitRq(..), CommitRez(..), AckRq(..)
+  ( StoreErr(..), CommitRq(..), CommitRez(..), AckRq(..), RenewRq(..)
   , OutboxAppend(..), ChildAppend(..), BreakAppend(..) )
 import Hfsm.Store.Postgres.Codec
   ( ref32, caseRef32, stepKindSql, signalStatusSql, projectionValues
@@ -42,7 +40,7 @@ type LockedInstance =
   (UUID, Int64, Maybe UUID, Maybe UUID, Maybe UTCTime,
    Text, Text, Text, Int64, Value, Text)
 
-type LockedSignal = (UUID, Text, Maybe UUID, Maybe UTCTime)
+type LockedSignal = (UUID, Text, Maybe UUID, Maybe UTCTime, Int64)
 
 abort :: StoreErr -> Tx.Transaction (Either StoreErr a)
 abort e = Tx.condemn *> pure (Left e)
@@ -101,13 +99,15 @@ commitTurnTx rq = do
 validateTurn :: CommitRq -> LockedInstance -> LockedSignal -> UTCTime -> Either StoreErr Int64
 validateTurn rq (snapshotId, revision, inSig, inLease, inUntil,
                   _mName, mVersion, mDigest, stateRef, _pathVal, instStatus)
-                (sigInst, sigStatus, sigLease, sigUntil) now
+                (sigInst, sigStatus, sigLease, sigUntil, sigOrdinal) now
   | instStatus `notElem` ["running", "waiting", "paused"] = Left (ConflictEr "commitTurn: instance terminal")
   | revision == maxBound = Left (ConflictEr "commitTurn: instance revision exhausted")
+  | rq.expectedRevision /= revision = Left (ConflictEr "commitTurn: stale expected revision")
   | rq.expectedSnapshot /= snapshotId = Left (ConflictEr "commitTurn: stale expected snapshot")
   | rq.signalId /= inSigId = Left (LeaseLostEr "commitTurn: different in-flight signal")
   | rq.leaseId /= inLeaseId = Left (LeaseLostEr "commitTurn: wrong instance lease token")
   | not (validUntil inUntil) = Left (LeaseLostEr "commitTurn: instance lease expired")
+  | sigOrdinal /= rq.signalOrdinal = Left (ConflictEr "commitTurn: wrong instance-local signal ordinal")
   | sigInst /= rq.instanceId = Left (ConflictEr "commitTurn: signal belongs to another instance")
   | sigStatus /= "leased" || sigLease /= Just rq.leaseId = Left (LeaseLostEr "commitTurn: signal not leased by caller")
   | not (validUntil sigUntil) = Left (LeaseLostEr "commitTurn: signal lease expired")
@@ -148,7 +148,7 @@ ackFailureTx rq
               now <- Tx.statement () S.serverNow
               case ms of
                 Nothing -> abort (NotFoundEr "ackSignal: signal missing after lock")
-                Just (parentId, status, leaseId, leaseUntil)
+                Just (parentId, status, leaseId, leaseUntil, _sigOrdinal)
                   | parentId /= instId || inSig /= Just rq.signal || inLease /= Just rq.lease ->
                       abort (LeaseLostEr "ackSignal: instance fence changed")
                   | status /= "leased" || leaseId /= Just rq.lease ->
@@ -163,6 +163,39 @@ ackFailureTx rq
                       if isJust cleared && isJust released
                         then pure (Right ())
                         else abort (LeaseLostEr "ackSignal: fence changed during release")
+
+-- | Extend a still-owned lease using server time and both fencing predicates.
+-- Lock order matches commitTurn: instance then signal. Any failed mutation
+-- condemns the full transaction, including a provisional signal extension.
+renewLeaseTx :: RenewRq -> Tx.Transaction (Either StoreErr UTCTime)
+renewLeaseTx rq = do
+  parent <- Tx.statement rq.signal S.lookupSignalParent
+  case parent of
+    Nothing -> abort (NotFoundEr "renewLease: signal missing")
+    Just instId -> do
+      mi <- Tx.statement instId S.lockInstance
+      case mi of
+        Nothing -> abort (NotFoundEr "renewLease: instance missing")
+        Just (_,_,inSig,inLease,inUntil,_,_,_,_,_,_) -> do
+          ms <- Tx.statement rq.signal S.lockSignal
+          now <- Tx.statement () S.serverNow
+          case ms of
+            Just (sigInst, "leased", Just token, Just sigUntil, _ord)
+              | sigInst == instId && inSig == Just rq.signal
+                  && inLease == Just rq.lease && token == rq.lease
+                  && maybe False (> now) inUntil && sigUntil > now -> do
+                  let seconds = max 1 (min 3600 rq.extendSeconds)
+                      wanted = addUTCTime (fromIntegral seconds) now
+                  extended <- Tx.statement (rq.signal, rq.lease, wanted) S.renewSignalLease
+                  case extended of
+                    Nothing -> abort (LeaseLostEr "renewLease: signal fencing failed")
+                    Just until' -> do
+                      updated <- Tx.statement (instId, rq.signal, rq.lease, until') S.renewInstanceLease
+                      case updated of
+                        Nothing -> abort (LeaseLostEr "renewLease: instance fencing failed")
+                        Just finalUntil -> pure (Right finalUntil)
+            _ -> abort (LeaseLostEr "renewLease: expired/stale lease")
+
 
 claimSignalsTx :: Int32 -> UUID -> Int32 -> Tx.Transaction (Vector Value)
 claimSignalsTx amount node seconds =

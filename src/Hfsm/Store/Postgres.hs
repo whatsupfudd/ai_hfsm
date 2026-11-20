@@ -29,7 +29,7 @@ import Hfsm.Runtime.Model (InstanceRw, SignalRw, SnapshotRw, SignalStatus(..))
 import Hfsm.Runtime.Registry (MachineKey)
 import Hfsm.Store.Class
   ( Store(..), StoreErr(..), LeaseRq(..), LeaseRez(..),
-    AckRq(..), PollRq(..), CommitRq(..), CommitRez(..) )
+    AckRq(..), RenewRq(..), PollRq(..), CommitRq(..), CommitRez(..) )
 import Hfsm.Store.Postgres.Codec (decodeValue, signalStatusSql)
 import Hfsm.Store.Postgres.Types (Runner(..), runWithPool, NewInstance(..), EnqueueRq(..))
 import qualified Hfsm.Store.Postgres.Types as Pt
@@ -55,6 +55,7 @@ postgresStore runner = Store
       traverse (requireDecoded . decodeValue) mv
   , commitTurn = \rq -> execute runner (writeTx (X.commitTurnTx rq))
   , ackSignal = \rq -> execute runner (writeTx (X.ackFailureTx rq))
+  , renewLease = \rq -> execute runner (writeTx (X.renewLeaseTx rq))
   , listSignals = \rq -> do
       let states = V.fromList (map signalStatusSql rq.status)
           limit = fromIntegral (max 0 (min 10000 rq.limit)) :: Int32

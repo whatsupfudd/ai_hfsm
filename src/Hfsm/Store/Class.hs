@@ -15,6 +15,7 @@ module Hfsm.Store.Class
   , LeaseRq(..)
   , LeaseRez(..)
   , AckRq(..)
+  , RenewRq(..)
   , PollRq(..)
   , CommitRq(..)
   , CommitRez(..)
@@ -23,12 +24,12 @@ module Hfsm.Store.Class
   , ChildAppend(..)
   , BreakAppend(..)
   , ProjBatch(..)
-  -- To remove after deprecation of SnapshotAppend:
   , SnapshotAppend(..)
   , StepAppend(..)
   ) where
 
 import Control.DeepSeq (NFData)
+import Data.Int (Int64)
 import Data.Text (Text)
 import Data.Time (UTCTime)
 import Data.UUID (UUID)
@@ -42,7 +43,6 @@ import Hfsm.Runtime.Model.Instance (InstanceRw, InstanceStatus)
 import Hfsm.Runtime.Model.Signal (SignalRw, SignalStatus)
 import Hfsm.Runtime.Model.Snapshot (SnapshotRw)
 import Hfsm.Runtime.Model.Step (StepRw, StepKind)
--- To remove after deprecation of SnapshotAppend:
 import Hfsm.Core.Version (MachineVersion)
 import Hfsm.Core.Digest (SpecDigest)
 import Hfsm.Core.Path (StatePath)
@@ -56,6 +56,7 @@ data Store m = Store
   , loadSnapshot :: UUID -> m (Maybe SnapshotRw)
   , commitTurn   :: CommitRq -> m (Either StoreErr CommitRez)
   , ackSignal    :: AckRq -> m (Either StoreErr ())
+  , renewLease   :: RenewRq -> m (Either StoreErr UTCTime)
   , listSignals  :: PollRq -> m [SignalRw]
   }
 
@@ -84,6 +85,17 @@ data AckRq = AckRq
   deriving stock (Eq, Show, Read, Generic)
   deriving anyclass (NFData, ToJSON, FromJSON)
 
+-- | The store checks fencing, expiry and server time; now is advisory only.
+-- Renewals may extend but MUST NOT shorten the lease.
+data RenewRq = RenewRq
+  { signal :: UUID
+  , lease :: UUID
+  , extendSeconds :: Int
+  , now :: UTCTime
+  }
+  deriving stock (Eq, Show, Read, Generic)
+  deriving anyclass (NFData, ToJSON, FromJSON)
+
 data PollRq = PollRq
   { status :: [SignalStatus]
   , limit :: Int
@@ -94,13 +106,14 @@ data PollRq = PollRq
 
 -- | All data necessary to persist a turn in ONE storage transaction.
 -- Step/snapshot UUIDs are assigned by pure planning. Stores assign UIDs.
--- The (instanceId, expectedSnapshot) pair is a CAS revision guard until an
--- explicit monotonic revision is introduced in the following milestone.
+-- The (instanceId, expectedRevision, expectedSnapshot) tuple is the CAS guard.
 -- Effects must be recorded with the committed step UUID (not UUID.nil).
 data CommitRq = CommitRq
   { instanceId :: UUID
   , expectedSnapshot :: UUID
+  , expectedRevision :: Int64
   , signalId :: UUID
+  , signalOrdinal :: Int64
   , leaseId :: UUID
   , step :: StepRw
   , snapshot :: SnapshotRw
@@ -185,7 +198,7 @@ data StoreErr
   deriving stock (Eq, Ord, Show, Read, Generic)
   deriving anyclass (NFData, ToJSON, FromJSON)
 
--- To Deprecate:
+-- Legacy append types are retained temporarily for source compatibility.
 data SnapshotAppend = SnapshotAppend
   { inst :: UUID
   , state :: StateRef
@@ -213,4 +226,3 @@ data StepAppend = StepAppend
   }
   deriving stock (Eq, Show, Read, Generic)
   deriving anyclass (NFData, ToJSON, FromJSON)
-

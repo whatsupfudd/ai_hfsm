@@ -22,7 +22,7 @@ import Data.Map.Strict (Map)
 import qualified Data.Set as S
 import Data.Text (Text)
 import qualified Data.Text as T
-import Data.Time (getCurrentTime)
+import Data.Time (getCurrentTime, addUTCTime, UTCTime)
 import Data.UUID (UUID)
 import qualified Data.UUID as U
 import qualified Data.UUID.V4 as U4
@@ -53,6 +53,7 @@ import Hfsm.Graph.Def
   , MachineGraph(..)
   )
 
+import Hfsm.Runtime.Model.Instance (instanceIsActive)
 import Hfsm.Runtime.Model
   ( BreakKind(..)
   , BreakRw(..)
@@ -72,6 +73,7 @@ import Hfsm.Runtime.Model
 
 import Hfsm.Store.Class
   ( AckRq(..)
+  , RenewRq(..)
   , CommitRq(..)
   , StoreErr(..)
   , BreakAppend(..)
@@ -150,6 +152,7 @@ memoryApi impl =
     , loadSnapshot = memoryLoadSnapshot impl
     , commitTurn = memoryCommitTurn impl
     , ackSignal = memoryAckSignal impl
+    , renewLease = memoryRenewLease impl
     , listSignals = memoryListSignals impl
     }
 
@@ -194,6 +197,8 @@ createInstance impl compiled ctx = do
           , state = stateNode.ref
           , path = stateNode.path
           , snap = snapId
+          , revision = 0
+          , nextSignalOrdinal = 1
           , parent = Nothing
           , createdAt = now
           , updatedAt = now
@@ -210,31 +215,25 @@ enqueueSignal impl instId signal = do
   now <- getCurrentTime
   uid <- freshUid impl
   signalId <- U4.nextRandom
-
-  exists <- atomically $ do
-    instances <- readTVar impl.instances
-    pure (M.member instId instances)
-
-  if not exists
-    then fail ("instance not found: " <> T.unpack (U.toText instId))
-    else do
-      let row =
-            SignalRw
-              { uid = uid
-              , uuid = signalId
-              , inst = instId
-              , status = EnteredSs
-              , payload = toJSON signal
-              , cause = Nothing
-              , lease = Nothing
-              , createdAt = now
-              , updatedAt = now
-              }
-
-      atomically $
+  inserted <- atomically $ do
+    rows <- readTVar impl.instances
+    case M.lookup instId rows of
+      Nothing -> pure False
+      Just inst -> do
+        let row = SignalRw
+              { uid = uid, uuid = signalId, inst = instId
+              , ordinal = inst.nextSignalOrdinal
+              , status = EnteredSs, payload = toJSON signal
+              , cause = Nothing, lease = Nothing
+              , leaseOwner = Nothing, leaseUntil = Nothing
+              , attempts = 0, readyAt = now
+              , createdAt = now, updatedAt = now }
+        modifyTVar' impl.instances (M.insert instId
+          (inst { nextSignalOrdinal = inst.nextSignalOrdinal + 1 } :: InstanceRw))
         modifyTVar' impl.signals (M.insert signalId row)
-
-      pure signalId
+        pure True
+  if inserted then pure signalId
+    else fail ("instance not found: " <> T.unpack (U.toText instId))
 
 loadInstanceView :: StoreImpl -> UUID -> IO Value
 loadInstanceView impl instId = do
@@ -295,31 +294,43 @@ loadInstanceView impl instId = do
           ]
       ]
 
+-- | One lease per instance, selecting only the earliest pending ordinal.
+-- An expired lease is reclaimed on the SAME signal with a fresh fencing UUID.
 memoryLeaseSignal :: StoreImpl -> LeaseRq -> IO LeaseRez
-memoryLeaseSignal impl rq =
+memoryLeaseSignal impl rq = do
+  now <- getCurrentTime
+  let maxItems = max 0 rq.batchSize
+      ttl = fromIntegral (max 1 rq.leaseSeconds)
+  tokens <- replicateM maxItems U4.nextRandom
   atomically $ do
-    signals <- readTVar impl.signals
-
-    let candidates =
-          take rq.batchSize $
-            L.sortOn (\(x :: SignalRw) -> x.uid) $
-              filter (\(x :: SignalRw) -> x.status == EnteredSs) $
-                M.elems signals
-
-    if null candidates
+    allSignals <- readTVar impl.signals
+    insts <- readTVar impl.instances
+    let pending = filter (\s -> s.status == EnteredSs || s.status == LeasedSs)
+                  (M.elems allSignals)
+        oldest = M.elems $ M.fromListWith
+          (\a b -> if a.ordinal <= b.ordinal then a else b)
+          [(s.inst, s) | s <- pending]
+        eligible :: SignalRw -> Bool
+        eligible s = case M.lookup s.inst insts of
+          Nothing -> False
+          Just inst -> instanceIsActive inst.status &&
+            case s.status of
+              EnteredSs -> s.readyAt <= now
+              LeasedSs -> maybe False (<= now) s.leaseUntil
+              _ -> False
+        candidates = take maxItems $ L.sortOn (\s -> (s.readyAt,s.uid))
+          (filter eligible oldest)
+        leased = zipWith (\row token -> (row :: SignalRw)
+          { status = LeasedSs, lease = Just token
+          , leaseOwner = Just rq.node
+          , leaseUntil = Just (addUTCTime ttl now)
+          , attempts = row.attempts + 1
+          , updatedAt = now }) candidates tokens
+    if null leased
       then pure LeaseNoneLz
       else do
-        let
-          leased = fmap (\row -> (row :: SignalRw) {
-                      status = LeasedSs
-                    , lease = Just rq.node
-                    , updatedAt = rq.now
-                    }
-              ) candidates
-
         writeTVar impl.signals $
-          foldr (\row acc -> M.insert row.uuid row acc) signals leased
-
+          foldr (\row acc -> M.insert row.uuid row acc) allSignals leased
         pure (LeaseSomeLz leased)
 
 memoryLoadInstance :: StoreImpl -> UUID -> IO (Maybe InstanceRw)
@@ -339,6 +350,7 @@ memoryCommitTurn impl rq = do
   outboxIds <- replicateM (length rq.outbox) U4.nextRandom
   childIds <- replicateM (length rq.child) U4.nextRandom
   breakIds <- replicateM (length rq.breaks) U4.nextRandom
+  now <- getCurrentTime
   atomically $ do
     instances <- readTVar impl.instances
     signals <- readTVar impl.signals
@@ -348,14 +360,24 @@ memoryCommitTurn impl rq = do
       (Nothing, _) -> pure (Left (NotFoundEr "instance missing at commit"))
       (_, Nothing) -> pure (Left (NotFoundEr "signal missing at commit"))
       (Just instRow, Just sigRow)
+        | instRow.revision /= rq.expectedRevision ->
+            pure (Left (ConflictEr "instance revision changed since planning"))
+        | instRow.revision == maxBound ->
+            pure (Left (ConflictEr "instance revision exhausted"))
+        | not (instanceIsActive instRow.status) ->
+            pure (Left (ConflictEr "instance is terminal"))
         | instRow.snap /= rq.expectedSnapshot ->
             pure (Left (ConflictEr "instance snapshot changed since planning"))
         | M.notMember rq.expectedSnapshot snapshots ->
             pure (Left (NotFoundEr "expected snapshot not stored"))
+        | sigRow.ordinal /= rq.signalOrdinal ->
+            pure (Left (ConflictEr "signal ordinal changed since planning"))
         | sigRow.inst /= rq.instanceId ->
             pure (Left (ConflictEr "signal belongs to a different instance"))
         | sigRow.status /= LeasedSs || sigRow.lease /= Just rq.leaseId ->
             pure (Left (LeaseLostEr "signal lease no longer valid"))
+        | maybe True (<= now) sigRow.leaseUntil ->
+            pure (Left (LeaseLostEr "signal lease expired"))
         | any (\app -> app.inst /= rq.instanceId || app.step /= rq.step.uuid) rq.outbox ->
             pure (Left (ConflictEr "planned outbox is not bound to this turn"))
         | any (\app -> app.parent /= rq.instanceId) rq.child ->
@@ -388,7 +410,9 @@ memoryCommitTurn impl rq = do
               outboxRows = zipWith3
                 (\uid rowId app -> OutboxRw
                   { uid = uid, uuid = rowId, inst = app.inst
-                  , step = stepRw.uuid, status = ReadyOs, payload = app.payload
+                  , step = stepRw.uuid
+                  , effectKey = U.toText stepRw.uuid <> ":" <> T.pack (show (uid - outboxStart))
+                  , status = ReadyOs, payload = app.payload
                   , lease = Nothing, createdAt = app.now, updatedAt = app.now })
                 [outboxStart..] outboxIds rq.outbox
               childRows = zipWith3
@@ -405,11 +429,12 @@ memoryCommitTurn impl rq = do
                 [breakStart..] breakIds rq.breaks
               instNext = instRow
                 { state = snapshotRw.state, path = snapshotRw.path
-                , snap = snapshotRw.uuid, status = rq.nextStatus
+                , snap = snapshotRw.uuid, revision = instRow.revision + 1
+                , status = rq.nextStatus
                 , updatedAt = snapshotRw.createdAt }
               sigNext = (sigRow :: SignalRw)
-                { status = AppliedSs, lease = Nothing
-                , updatedAt = snapshotRw.createdAt }
+                { status = AppliedSs, lease = Nothing, leaseOwner = Nothing
+                , leaseUntil = Nothing, updatedAt = snapshotRw.createdAt }
             writeTVar impl.nextUid endUid
             writeTVar impl.instances (M.insert rq.instanceId instNext instances)
             writeTVar impl.signals (M.insert rq.signalId sigNext signals)
@@ -427,21 +452,44 @@ memoryCommitTurn impl rq = do
 -- | Errors have no successful turn to commit. Failure/rejection/requeue ACKs are
 -- also fenced. A mismatched/stale lease never changes the signal row.
 memoryAckSignal :: StoreImpl -> AckRq -> IO (Either StoreErr ())
-memoryAckSignal impl rq = atomically $ do
-  signals <- readTVar impl.signals
-  case M.lookup rq.signal signals of
-    Nothing -> pure (Left (NotFoundEr "signal missing for failure ACK"))
-    Just row
-      | row.status /= LeasedSs || row.lease /= Just rq.lease ->
-          pure (Left (LeaseLostEr "signal is not leased by this worker"))
-      | rq.status /= FailedSs && rq.status /= RejectedSs && rq.status /= EnteredSs ->
-          pure (Left (ConflictEr "ACK outside commitTurn may only fail, reject or requeue"))
-      | otherwise -> do
-          writeTVar impl.signals $
-            M.insert rq.signal
-              (row { status = rq.status, lease = Nothing, updatedAt = rq.now } :: SignalRw)
-              signals
-          pure (Right ())
+memoryAckSignal impl rq = do
+  now <- getCurrentTime
+  atomically $ do
+    rows <- readTVar impl.signals
+    case M.lookup rq.signal rows of
+      Nothing -> pure (Left (NotFoundEr "signal missing for failure ACK"))
+      Just row
+        | row.status /= LeasedSs || row.lease /= Just rq.lease ->
+            pure (Left (LeaseLostEr "signal is not leased by this worker"))
+        | maybe True (<= now) row.leaseUntil ->
+            pure (Left (LeaseLostEr "signal lease expired before ACK"))
+        | rq.status /= FailedSs && rq.status /= RejectedSs && rq.status /= EnteredSs ->
+            pure (Left (ConflictEr "ACK outside commitTurn may only fail, reject or requeue"))
+        | otherwise -> do
+            writeTVar impl.signals $ M.insert rq.signal
+              (row { status = rq.status, lease = Nothing, leaseOwner = Nothing
+                   , leaseUntil = Nothing, readyAt = now, updatedAt = now } :: SignalRw) rows
+            pure (Right ())
+
+-- | Fenced extension; expires strictly at deadline and may never shorten TTL.
+memoryRenewLease :: StoreImpl -> RenewRq -> IO (Either StoreErr UTCTime)
+memoryRenewLease impl rq = do
+  now <- getCurrentTime
+  let wanted = addUTCTime (fromIntegral (max 1 (min 3600 rq.extendSeconds))) now
+  atomically $ do
+    rows <- readTVar impl.signals
+    case M.lookup rq.signal rows of
+      Nothing -> pure (Left (NotFoundEr "renewLease: missing signal"))
+      Just row
+        | row.status /= LeasedSs || row.lease /= Just rq.lease ->
+            pure (Left (LeaseLostEr "renewLease: stale fencing token"))
+        | maybe True (<= now) row.leaseUntil ->
+            pure (Left (LeaseLostEr "renewLease: expired lease"))
+        | otherwise -> do
+            let until' = maybe wanted (max wanted) row.leaseUntil
+            writeTVar impl.signals (M.insert rq.signal
+              (row { leaseUntil = Just until' } :: SignalRw) rows)
+            pure (Right until')
 
 memoryListSignals :: StoreImpl -> PollRq -> IO [SignalRw]
 memoryListSignals impl rq =
@@ -491,6 +539,8 @@ instanceValue row =
     , "state" .= stateRefWord32 row.state
     , "path" .= renderStatePath row.path
     , "snap" .= U.toText row.snap
+    , "revision" .= row.revision
+    , "nextSignalOrdinal" .= row.nextSignalOrdinal
     , "parent" .= fmap U.toText row.parent
     , "createdAt" .= row.createdAt
     , "updatedAt" .= row.updatedAt
@@ -502,10 +552,15 @@ signalValue row =
     [ "uid" .= row.uid
     , "uuid" .= U.toText row.uuid
     , "inst" .= U.toText row.inst
+    , "ordinal" .= row.ordinal
     , "status" .= showText row.status
     , "payload" .= row.payload
     , "cause" .= row.cause
     , "lease" .= fmap U.toText row.lease
+    , "leaseOwner" .= fmap U.toText row.leaseOwner
+    , "leaseUntil" .= row.leaseUntil
+    , "attempts" .= row.attempts
+    , "readyAt" .= row.readyAt
     , "createdAt" .= row.createdAt
     , "updatedAt" .= row.updatedAt
     ]
@@ -549,6 +604,7 @@ outboxValue row =
     , "uuid" .= U.toText row.uuid
     , "inst" .= U.toText row.inst
     , "step" .= U.toText row.step
+    , "effectKey" .= row.effectKey
     , "status" .= showText row.status
     , "payload" .= row.payload
     , "lease" .= fmap U.toText row.lease

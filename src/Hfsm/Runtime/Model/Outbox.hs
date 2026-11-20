@@ -40,6 +40,7 @@ data OutboxRw = OutboxRw
   , uuid :: UUID
   , inst :: UUID
   , step :: UUID
+  , effectKey :: Text -- deterministic step UUID + ordinal
   , status :: OutboxStatus
   , payload :: Value
   , lease :: Maybe UUID

@@ -41,10 +41,15 @@ data SignalRw = SignalRw
   { uid :: Int64
   , uuid :: UUID
   , inst :: UUID
+  , ordinal :: Int64 -- instance-local signal sequence
   , status :: SignalStatus
   , payload :: Value
   , cause :: Maybe Value
-  , lease :: Maybe UUID
+  , lease :: Maybe UUID -- opaque fencing token
+  , leaseOwner :: Maybe UUID
+  , leaseUntil :: Maybe UTCTime
+  , attempts :: Int
+  , readyAt :: UTCTime
   , createdAt :: UTCTime
   , updatedAt :: UTCTime
   }

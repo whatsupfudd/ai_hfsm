@@ -55,6 +55,8 @@ data InstanceRw = InstanceRw
   , state :: StateRef
   , path :: StatePath
   , snap :: UUID
+  , revision :: Int64
+  , nextSignalOrdinal :: Int64
   , parent :: Maybe UUID
   , createdAt :: UTCTime
   , updatedAt :: UTCTime

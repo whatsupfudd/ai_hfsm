@@ -1,9 +1,10 @@
 -- | Focused executable regression for the new one-turn persistence contract.
 -- Run with: stack exec -- runghc -isrc src/Demo/CommitTurnRegression.hs
-module Demo.CommitTurnRegression (main, regression) where
+module Demo.CommitTurnRegression (regression) where
 
 import Control.Monad (unless)
-
+import Data.Aeson (Value(..))
+import qualified Data.Aeson.KeyMap as KM
 import Data.String (fromString)
 import qualified Data.Text
 import Data.Time.Clock (getCurrentTime)
@@ -11,22 +12,15 @@ import qualified Data.UUID as U
 import qualified Data.UUID.V4 as U4
 import qualified Data.Vector as V
 
-import Data.Aeson (Value(..))
-import qualified Data.Aeson.KeyMap as KM
-
+import Demo.ApprovalHfsm (approvalSpec, Signal(..))
+import Demo.ApprovalRuntime (initialCtx)
+import Demo.MemoryStore (createInstance, enqueueSignal, loadInstanceView, newMemoryStore, storeOf)
 import Hfsm.Compile (compile)
 import Hfsm.Runtime.Engine.Step (StepInput(..), StepPlan(..), EngineErr(..), commitStep, planStep)
 import Hfsm.Runtime.Model (InstanceRw(..), SignalRw(..), SignalStatus(..), SnapshotRw(..), StepRw(..))
 import Hfsm.Runtime.Registry (machineKeyOf)
 import Hfsm.Store.Class (AckRq(..), CommitRq(..), CommitRez(..), LeaseRq(..), LeaseRez(..), PollRq(..), Store(..))
 
-import Demo.ApprovalHfsm (approvalSpec, Signal(..))
-import Demo.ApprovalRuntime (initialCtx)
-import Demo.MemoryStore (createInstance, enqueueSignal, loadInstanceView, newMemoryStore, storeOf)
-
-
-main :: IO ()
-main = regression
 
 regression :: IO ()
 regression = do
@@ -56,7 +50,9 @@ regression = do
   let request = CommitRq
         { instanceId = instId
         , expectedSnapshot = U.nil
+        , expectedRevision = inst0.revision
         , signalId = sig.uuid
+        , signalOrdinal = sig.ordinal
         , leaseId = leaseId
         , step = plan.step
         , snapshot = plan.snapshot
