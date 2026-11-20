@@ -51,7 +51,7 @@ startPg dbC =
     connParams = [Cp.host $ Te.decodeUtf8 dbC.host, Cp.port dbC.port, Cp.user $ Te.decodeUtf8 dbC.user, Cp.password $ Te.decodeUtf8 dbC.passwd, Cp.dbname $ Te.decodeUtf8 dbC.dbase]
     csSetting = Cs.connection $ Csc.params connParams
     pcSetting = Pc.staticConnectionSettings [ csSetting ]
-    poolSettings = [Pc.size dbC.poolSize, Pc.acquisitionTimeout dbC.acqTimeout, Pc.agingTimeout dbC.poolTimeOut, Pc.acquisitionTimeout dbC.poolIdleTime]
+    poolSettings = [Pc.size dbC.poolSize, Pc.acquisitionTimeout dbC.acqTimeout, Pc.agingTimeout dbC.poolTimeOut, Pc.idlenessTimeout dbC.poolIdleTime]
     dbConfig = Pc.settings (pcSetting : poolSettings)
   in do
   liftIO . putStrLn $ "@[startPg] user: " <> show dbC.user <> " db: " <> show dbC.dbase <> "."

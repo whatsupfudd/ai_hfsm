@@ -107,7 +107,7 @@ import Hfsm.Runtime.Model
   )
 import Hfsm.Runtime.Registry (MachineKey(..), machineKeyOf)
 import Hfsm.Spec.Case (ReactEnv(..), ReactErr(..), ReactRez(..))
-import Hfsm.Spec.Def (MachineSpec(..))
+import Hfsm.Spec.Def (MachineSpec(..), StateKind(..))
 import Hfsm.Store.Class
   ( CommitRq(..)
   , StoreErr(..)
@@ -187,60 +187,71 @@ planStep compiled input = do
   routeEd <- resolveRoute compiled.graph currentSt reaction.caseRef handoffTxt
   nextSt <- resolveTargetState compiled.graph currentSt routeEd.plan.target
 
+
+  let
+    waitVal = buildWaitValue compiled.graph routeEd.plan.wait routeEd.plan.timers
+    plannedChildren = buildChildPlans input routeEd
+    breakAppends = buildBreakAppends input routeEd currentSt.ref nextSt.ref
+    -- A terminal state belonging to the root region
+    -- completes the entire machine instance.
+    reachedRootTerminal = nextSt.kind == TerminalSk && nextSt.parent == compiled.graph.root
+    terminalTurn = isTerminalTarget routeEd.plan.target || reachedRootTerminal
+    nextStatus = nextStatusOf routeEd.plan.target reachedRootTerminal waitVal breakAppends
+    noteVal = buildStepNote input handoffTxt routeEd reaction nextStatus waitVal breakAppends
+  {-
   let waitVal = buildWaitValue compiled.graph routeEd.plan.wait routeEd.plan.timers
       plannedChildren = buildChildPlans input routeEd
       breakAppends = buildBreakAppends input routeEd currentSt.ref nextSt.ref
       nextStatus = nextStatusOf routeEd.plan.target waitVal breakAppends
       noteVal = buildStepNote input handoffTxt routeEd reaction nextStatus waitVal breakAppends
-      now = input.signal.updatedAt
-      -- Stable IDs make retry/replay output identities reproducible. The
-      -- store assigns only relational UIDs; nil IDs never escape planning.
-      stepUuid = deterministicUuid ("hfsm/step/" <> U.toText input.instance_.uuid <> "/" <> U.toText input.signal.uuid)
-      snapshotUuid = deterministicUuid ("hfsm/snapshot/" <> U.toText input.instance_.uuid <> "/" <> U.toText input.signal.uuid)
+   -}
+    now = input.signal.updatedAt
+    -- Stable IDs make retry/replay output identities reproducible. The
+    -- store assigns only relational UIDs; nil IDs never escape planning.
+    stepUuid = deterministicUuid ("hfsm/step/" <> U.toText input.instance_.uuid <> "/" <> U.toText input.signal.uuid)
+    snapshotUuid = deterministicUuid ("hfsm/snapshot/" <> U.toText input.instance_.uuid <> "/" <> U.toText input.signal.uuid)
+    (childMap0, timerMap0) = decodeChildStore input.snapshot.child
+    childMap1 = if terminalTurn then -- isTerminalTarget routeEd.plan.target
+        M.empty
+      else
+        foldl' (\acc x -> M.insert x.key x.store acc) childMap0 plannedChildren
+    timerMap1 = if terminalTurn then --  isTerminalTarget routeEd.plan.target 
+        M.empty
+      else
+        foldl' (\acc x -> M.insert (timerStoreKey compiled.graph x.ref) (timerStoreValue compiled.graph x) acc) timerMap0 routeEd.plan.timers
+    nextSnapshot = SnapshotRw {
+          uid = 0
+        , uuid = snapshotUuid
+        , inst = input.instance_.uuid
+        , state = nextSt.ref
+        , path = nextSt.path
+        , ctx = compiled.spec.codecs.ctx.encode reaction.rez.next
+        , wait = waitVal
+        , child = encodeChildStore childMap1 timerMap1
+        , version = compiled.spec.version
+        , digest = compiled.digest
+        , createdAt = now
+        }
 
-      (childMap0, timerMap0) = decodeChildStore input.snapshot.child
-      childMap1 = if isTerminalTarget routeEd.plan.target
-        then M.empty
-        else foldl' (\acc x -> M.insert x.key x.store acc) childMap0 plannedChildren
-      timerMap1 = if isTerminalTarget routeEd.plan.target
-        then M.empty
-        else foldl' (\acc x -> M.insert (timerStoreKey compiled.graph x.ref) (timerStoreValue compiled.graph x) acc) timerMap0 routeEd.plan.timers
+    stepRw = StepRw { 
+          uid = 0
+        , uuid = stepUuid
+        , inst = input.instance_.uuid
+        , signal = Just input.signal.uuid
+        , kind = reaction.kind
+        , from = currentSt.ref
+        , to = nextSt.ref
+        , caseRef = reaction.caseRef
+        , route = routeEd.ref
+        , note = noteVal
+        , createdAt = now
+        }
 
-      nextSnapshot =
-        SnapshotRw
-          { uid = 0
-          , uuid = snapshotUuid
-          , inst = input.instance_.uuid
-          , state = nextSt.ref
-          , path = nextSt.path
-          , ctx = compiled.spec.codecs.ctx.encode reaction.rez.next
-          , wait = waitVal
-          , child = encodeChildStore childMap1 timerMap1
-          , version = compiled.spec.version
-          , digest = compiled.digest
-          , createdAt = now
-          }
-
-      stepRw =
-        StepRw
-          { uid = 0
-          , uuid = stepUuid
-          , inst = input.instance_.uuid
-          , signal = Just input.signal.uuid
-          , kind = reaction.kind
-          , from = currentSt.ref
-          , to = nextSt.ref
-          , caseRef = reaction.caseRef
-          , route = routeEd.ref
-          , note = noteVal
-          , createdAt = now
-          }
-
-      cmdOutbox = buildCmdOutboxAppends compiled now reaction.rez.cmds
-      timerOutbox = buildTimerOutboxAppends compiled.graph now routeEd.plan.timers
-      childOutbox = fmap (.outbox) plannedChildren
-      projBatch = buildProjBatch stepRw nextSnapshot breakAppends
-      childAppends = fmap (.append) plannedChildren
+    cmdOutbox = buildCmdOutboxAppends compiled now reaction.rez.cmds
+    timerOutbox = buildTimerOutboxAppends compiled.graph now routeEd.plan.timers
+    childOutbox = fmap (.outbox) plannedChildren
+    projBatch = buildProjBatch stepRw nextSnapshot breakAppends
+    childAppends = fmap (.append) plannedChildren
 
   pure
     StepPlan
@@ -611,19 +622,23 @@ buildWaitValue graph waitPlan timerPlans =
 
 buildStepNote :: StepInput -> Text -> RouteEd -> ReactionStep ctx hf cmd -> InstanceStatus -> Maybe Value -> [BreakAppend] -> Value
 buildStepNote input handoffTxt routeEd reaction statusVal waitVal breakAppends =
-  let terminalTxt =
+  let
+    {- terminalTxt =
         case routeEd.plan.target of
-          CompleteRt -> Just ("done" :: Text)
-          FailRt _ -> Just ("failed" :: Text)
-          StayRt -> Nothing
-          GotoRt _ -> Nothing
+        CompleteRt -> Just ("done" :: Text)
+        FailRt _ -> Just ("failed" :: Text)
+        StayRt -> Nothing
+        GotoRt _ -> Nothing
+    -}
+    terminalTxt = case statusVal of
+        DoneIs -> Just ("done" :: Text)
+        FailedIs -> Just ("failed" :: Text)
+        _ -> Nothing -- PausedIs, WaitingIs, RunningIs
+    failMsg = case routeEd.plan.target of
+      FailRt msg -> Just msg
+      _ -> Nothing
 
-      failMsg =
-        case routeEd.plan.target of
-          FailRt msg -> Just msg
-          _ -> Nothing
-
-      blockedOnVal = blockedOnText waitVal breakAppends
+    blockedOnVal = blockedOnText waitVal breakAppends
   in
   object
     [ "machine" .= machineNameText input.instance_.machine
@@ -709,6 +724,7 @@ statusFromSnapshot snapshotRw breakAppends
   | isJust snapshotRw.wait = WaitingIs
   | otherwise = RunningIs
 
+{- The machine gets stuck in RunningIs if it is not paused by a breakpoint.
 nextStatusOf :: RouteTarget -> Maybe Value -> [BreakAppend] -> InstanceStatus
 nextStatusOf target waitVal breakAppends =
   case target of
@@ -722,6 +738,20 @@ nextStatusOf target waitVal breakAppends =
       | not (null breakAppends) -> PausedIs
       | isJust waitVal -> WaitingIs
       | otherwise -> RunningIs
+-}
+
+
+nextStatusOf :: RouteTarget -> Bool -> Maybe Value -> [BreakAppend] -> InstanceStatus
+nextStatusOf target reachedRootTerminal waitVal breakAppends =
+  case target of
+    CompleteRt -> DoneIs
+    FailRt _ -> FailedIs
+    _
+      | reachedRootTerminal -> DoneIs
+      | not (null breakAppends) -> PausedIs
+      | isJust waitVal -> WaitingIs
+      | otherwise -> RunningIs
+
 
 signalRequestsEntry :: SignalRw -> Bool
 signalRequestsEntry signalRw =
