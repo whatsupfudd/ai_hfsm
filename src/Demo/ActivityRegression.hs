@@ -87,7 +87,7 @@ regressionPg cfg = runContT (Db.startPg cfg) $ \pool -> do
     machineWorker = Engine.WorkerCfg { batchSize=1, pollDelayMs=10, leaseSeconds=30, node=engineId }
     makeEffect = do
       new <- required "new instance" =<< newInstanceFor compiled initialCtx Nothing
-      putStrLn ("New instance: " <> show new)
+      -- putStrLn ("New instance: " <> show new)
       instanceId <- required "initialize" =<< Pg.initializeInstance runner new
       rq <- enqueueFor compiled instanceId (SubmitSg "alice") Nothing
       _ <- required "enqueue" =<< Pg.enqueue runner rq
