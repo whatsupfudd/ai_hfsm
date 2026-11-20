@@ -53,6 +53,11 @@ dependencies:
   - hasql-th
   - hasql-pool
   - hasql-transaction
+  # HTTP/JSON provider:
+  - http-client
+  - http-client-tls
+  - http-types
+
 
 default-extensions:
 - OverloadedStrings

@@ -79,7 +79,7 @@ regressionPg config = runContT (Db.startPg config) $ \pool -> do
   now <- getCurrentTime
   let claim node = LeaseRq { node = node, batchSize = 1, leaseSeconds = 30, now = now }
   claims <- competingClaims api (claim a) (claim b)
-  assert (length claims == 1) "Two workers leased the same instance concurrently"
+  assert (length claims == 1) ("Many workers leased the same instance concurrently: " <> (show. length $ claims))
   let sig = head claims
   assert (sig.ordinal == 1) "Wrong FIFO ordinal admitted"
   token <- just "missing lease token" sig.lease

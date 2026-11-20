@@ -31,6 +31,7 @@ library
       Commands.Version
       DB.Connect
       DB.Opers
+      Demo.ActivityRegression
       Demo.ApprovalHfsm
       Demo.ApprovalRuntime
       Demo.CommitTurnRegression
@@ -38,6 +39,11 @@ library
       Demo.DistributedSafetyRegression
       Demo.MemoryStore
       Demo.Print
+      Hfsm.Activity.Policy
+      Hfsm.Activity.Provider.Enqueue
+      Hfsm.Activity.Provider.Http
+      Hfsm.Activity.Types
+      Hfsm.Activity.Worker
       Hfsm.Check.Report
       Hfsm.Compile
       Hfsm.Compile.Exec
@@ -86,6 +92,9 @@ library
       Hfsm.Spec.Route
       Hfsm.Store.Class
       Hfsm.Store.Postgres
+      Hfsm.Store.Postgres.Activity
+      Hfsm.Store.Postgres.Activity.Statements
+      Hfsm.Store.Postgres.Activity.Transaction
       Hfsm.Store.Postgres.Bootstrap
       Hfsm.Store.Postgres.Codec
       Hfsm.Store.Postgres.Statements
@@ -129,6 +138,9 @@ library
     , hasql-pool
     , hasql-th
     , hasql-transaction
+    , http-client
+    , http-client-tls
+    , http-types
     , mtl
     , optparse-applicative
     , postgresql-binary
@@ -168,6 +180,9 @@ executable thfsm
     , hasql-pool
     , hasql-th
     , hasql-transaction
+    , http-client
+    , http-client-tls
+    , http-types
     , mtl
     , optparse-applicative
     , postgresql-binary
@@ -209,6 +224,9 @@ test-suite thfsm-test
     , hasql-pool
     , hasql-th
     , hasql-transaction
+    , http-client
+    , http-client-tls
+    , http-types
     , mtl
     , optparse-applicative
     , postgresql-binary
