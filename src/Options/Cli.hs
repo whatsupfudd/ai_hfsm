@@ -28,8 +28,9 @@ data Command =
   | TestCmd TestOpts
   deriving stock (Show)
 
-newtype TestOpts = TestOpts {
+data TestOpts = TestOpts {
   testName :: Text
+  , doDb :: Bool
   }
   deriving stock (Show)
 
@@ -105,3 +106,4 @@ commandDefs =
 testOpts :: Parser TestOpts
 testOpts =
   TestOpts <$> strArgument (metavar "TESTNAME" <> help "Name of the test to run.")
+    <*> switch (long "db" <> short 'D' <> help "Run the test with the database.")

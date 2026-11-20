@@ -109,13 +109,12 @@ import Hfsm.Runtime.Registry (MachineKey(..), machineKeyOf)
 import Hfsm.Spec.Case (ReactEnv(..), ReactErr(..), ReactRez(..))
 import Hfsm.Spec.Def (MachineSpec(..))
 import Hfsm.Store.Class
-  ( AckRq(..)
+  ( CommitRq(..)
+  , StoreErr(..)
   , BreakAppend(..)
   , OutboxAppend(..)
   , ChildAppend(..)
   , ProjBatch(..)
-  , SnapshotAppend(..)
-  , StepAppend(..)
   , Store(..)
   , CommitRez(..)
   )
@@ -139,10 +138,13 @@ data EngineErr =
   | NoMatchingCaseEr StateRef
   | ReactEr ReactErr
   | MissingRouteEr StateRef Text
+  | MissingLeaseEr UUID
+  | StoreCommitEr StoreErr
   deriving stock (Eq, Show, Read, Generic)
 
 data StepPlan = StepPlan
-  { step :: StepRw
+  { nextStatus :: InstanceStatus
+  , step :: StepRw
   , snapshot :: SnapshotRw
   , outbox :: [OutboxAppend]
   , child :: [ChildAppend]
@@ -191,6 +193,10 @@ planStep compiled input = do
       nextStatus = nextStatusOf routeEd.plan.target waitVal breakAppends
       noteVal = buildStepNote input handoffTxt routeEd reaction nextStatus waitVal breakAppends
       now = input.signal.updatedAt
+      -- Stable IDs make retry/replay output identities reproducible. The
+      -- store assigns only relational UIDs; nil IDs never escape planning.
+      stepUuid = deterministicUuid ("hfsm/step/" <> U.toText input.instance_.uuid <> "/" <> U.toText input.signal.uuid)
+      snapshotUuid = deterministicUuid ("hfsm/snapshot/" <> U.toText input.instance_.uuid <> "/" <> U.toText input.signal.uuid)
 
       (childMap0, timerMap0) = decodeChildStore input.snapshot.child
       childMap1 = if isTerminalTarget routeEd.plan.target
@@ -203,7 +209,7 @@ planStep compiled input = do
       nextSnapshot =
         SnapshotRw
           { uid = 0
-          , uuid = U.nil
+          , uuid = snapshotUuid
           , inst = input.instance_.uuid
           , state = nextSt.ref
           , path = nextSt.path
@@ -218,7 +224,7 @@ planStep compiled input = do
       stepRw =
         StepRw
           { uid = 0
-          , uuid = U.nil
+          , uuid = stepUuid
           , inst = input.instance_.uuid
           , signal = Just input.signal.uuid
           , kind = reaction.kind
@@ -238,44 +244,45 @@ planStep compiled input = do
 
   pure
     StepPlan
-      { step = stepRw
+      { nextStatus = nextStatus
+      , step = stepRw
       , snapshot = nextSnapshot
-      , outbox = cmdOutbox <> childOutbox <> timerOutbox
+      , outbox = fmap (\app -> app { inst = input.instance_.uuid, step = stepUuid }) (cmdOutbox <> childOutbox <> timerOutbox)
       , child = childAppends
       , breaks = breakAppends
       , proj = projBatch
       }
 
-commitStep :: Monad m => Store m -> StepPlan -> m CommitRez
-commitStep store plan = do
-  stepRw <- store.appendStep (mkStepAppend plan.step)
-  snapshotRw <- store.appendSnapshot (mkSnapshotAppend plan.snapshot)
+-- | One semantic, fenced, atomic store call per successful turn.
+-- No separate appendSnapshot, appendOutbox, projection write or success ACK.
+commitStep :: Monad m => Store m -> StepInput -> StepPlan -> m (Either EngineErr CommitRez)
+commitStep store input plan =
+  case input.signal.lease of
+    Nothing -> pure (Left (MissingLeaseEr input.signal.uuid))
+    Just leaseUuid -> do
+      let rq = CommitRq
+            { instanceId = input.instance_.uuid
+            , expectedSnapshot = input.snapshot.uuid
+            , signalId = input.signal.uuid
+            , leaseId = leaseUuid
+            , step = plan.step
+            , snapshot = plan.snapshot
+            , nextStatus = plan.nextStatus
+            , outbox = plan.outbox
+            , child = plan.child
+            , breaks = plan.breaks
+            , proj = plan.proj
+            }
+      rez <- store.commitTurn rq
+      pure (either (Left . StoreCommitEr) Right rez)
 
-  let outboxAppends = fmap (setOutboxStep stepRw.uuid) plan.outbox
-      projBatch = buildProjBatch stepRw snapshotRw plan.breaks
-
-  store.appendOutbox outboxAppends
-  store.appendChild plan.child
-  store.appendBreak plan.breaks
-  store.updateProj projBatch
-
-  pure
-    CommitRez
-      { step = stepRw
-      , snapshot = snapshotRw
-      }
-
+-- | Planning failures do not create steps; the worker alone handles their
+-- lease-fenced error acknowledgement. Success ACK happens in commitTurn.
 runStep :: (Monad m, Show hf) => Store m -> CompiledMachine st sg hf ctx cmd child -> StepInput -> m (Either EngineErr CommitRez)
 runStep store compiled input =
   case planStep compiled input of
-    Left err -> do
-      ackSignalIfLeased store input.signal (signalStatusForErr err) (Just (renderEngineErr err)) input.signal.updatedAt
-      pure (Left err)
-
-    Right plan -> do
-      rez <- commitStep store plan
-      ackSignalIfLeased store input.signal AppliedSs Nothing rez.step.createdAt
-      pure (Right rez)
+    Left err -> pure (Left err)
+    Right plan -> commitStep store input plan
 
 renderEngineErr :: EngineErr -> Text
 renderEngineErr err =
@@ -338,6 +345,12 @@ renderEngineErr err =
     MissingRouteEr stateRef handoffTxt ->
       "missing route for state " <> renderStateRef stateRef <> " and handoff " <> quote handoffTxt
 
+    MissingLeaseEr signalUuid ->
+      "leased signal has no fencing token: " <> U.toText signalUuid
+
+    StoreCommitEr storeErr ->
+      "turn commit rejected: " <> T.pack (show storeErr)
+
 ensureInputMatches :: CompiledMachine st sg hf ctx cmd child -> StepInput -> Either EngineErr ()
 ensureInputMatches compiled input = do
   let compiledKey = machineKeyOf compiled
@@ -376,7 +389,7 @@ ensureInputMatches compiled input = do
     then Right ()
     else Left (InstancePathMismatchEr input.instance_.path input.snapshot.path)
 
-resolveReaction :: Show hf => CompiledMachine st sg hf ctx cmd child -> StateNd -> ReactEnv -> ctx -> SignalRw -> Either EngineErr (ReactionStep ctx hf cmd)
+resolveReaction :: CompiledMachine st sg hf ctx cmd child -> StateNd -> ReactEnv -> ctx -> SignalRw -> Either EngineErr (ReactionStep ctx hf cmd)
 resolveReaction compiled currentSt env ctxVal signalRw =
   if signalRequestsEntry signalRw
     then runEntryReaction compiled currentSt env ctxVal
@@ -690,61 +703,6 @@ buildProjBatch stepRw snapshotRw breakAppends =
     , tree = []
     }
 
-mkStepAppend :: StepRw -> StepAppend
-mkStepAppend stepRw =
-  StepAppend
-    { inst = stepRw.inst
-    , signal = stepRw.signal
-    , kind = stepRw.kind
-    , from = stepRw.from
-    , to = stepRw.to
-    , caseRef = stepRw.caseRef
-    , route = stepRw.route
-    , note = stepRw.note
-    , now = stepRw.createdAt
-    }
-
-mkSnapshotAppend :: SnapshotRw -> SnapshotAppend
-mkSnapshotAppend snapshotRw =
-  SnapshotAppend
-    { inst = snapshotRw.inst
-    , state = snapshotRw.state
-    , path = snapshotRw.path
-    , ctx = snapshotRw.ctx
-    , wait = snapshotRw.wait
-    , child = snapshotRw.child
-    , version = snapshotRw.version
-    , digest = snapshotRw.digest
-    , now = snapshotRw.createdAt
-    }
-
-setOutboxStep :: UUID -> OutboxAppend -> OutboxAppend
-setOutboxStep stepUuid outboxAppend =
-  outboxAppend { step = stepUuid }
-
-ackSignalIfLeased :: Monad m => Store m -> SignalRw -> SignalStatus -> Maybe Text -> UTCTime -> m ()
-ackSignalIfLeased store signalRw statusVal noteVal nowVal =
-  case signalRw.lease of
-    Nothing -> pure ()
-    Just leaseUuid ->
-      store.ackSignal
-        AckRq
-          { signal = signalRw.uuid
-          , lease = leaseUuid
-          , status = statusVal
-          , note = noteVal
-          , now = nowVal
-          }
-
-signalStatusForErr :: EngineErr -> SignalStatus
-signalStatusForErr err =
-  case err of
-    DecodeSignalEr _ -> RejectedSs
-    NoMatchingCaseEr _ -> RejectedSs
-    ReactEr (RejectREr _) -> RejectedSs
-    ReactEr (DecodeREr _) -> RejectedSs
-    _ -> FailedSs
-
 statusFromSnapshot :: SnapshotRw -> [BreakAppend] -> InstanceStatus
 statusFromSnapshot snapshotRw breakAppends
   | not (null breakAppends) = PausedIs
@@ -859,9 +817,9 @@ renderMachineKey key =
 renderCodecErr :: CodecErr -> Text
 renderCodecErr err =
   case err of
-    DecodeEr msg -> "codec decode error: " <> msg
-    EncodeEr msg -> "codec encode error: " <> msg
-    SchemaEr msg -> "codec schema error: " <> msg
+    DecodeCE msg -> "codec decode error: " <> msg
+    EncodeCE msg -> "codec encode error: " <> msg
+    SchemaCE msg -> "codec schema error: " <> msg
 
 renderReactErr :: ReactErr -> Text
 renderReactErr err =

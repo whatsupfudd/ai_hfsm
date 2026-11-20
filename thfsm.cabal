@@ -1,6 +1,6 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.38.1.
+-- This file has been generated from package.yaml by hpack version 0.39.6.
 --
 -- see: https://github.com/sol/hpack
 
@@ -33,6 +33,7 @@ library
       DB.Opers
       Demo.ApprovalHfsm
       Demo.ApprovalRuntime
+      Demo.CommitTurnRegression
       Demo.MemoryStore
       Demo.Print
       Hfsm.Check.Report
@@ -81,6 +82,12 @@ library
       Hfsm.Spec.Indexed
       Hfsm.Spec.Route
       Hfsm.Store.Class
+      Hfsm.Store.Postgres
+      Hfsm.Store.Postgres.Bootstrap
+      Hfsm.Store.Postgres.Codec
+      Hfsm.Store.Postgres.Statements
+      Hfsm.Store.Postgres.Transaction
+      Hfsm.Store.Postgres.Types
       Hfsm.Validate.Error
       Hfsm.Validate.History
       Hfsm.Validate.Join
@@ -115,8 +122,13 @@ library
     , filepath
     , gitrev
     , hashable
+    , hasql
+    , hasql-pool
+    , hasql-th
+    , hasql-transaction
     , mtl
     , optparse-applicative
+    , postgresql-binary
     , scientific
     , stm
     , text
@@ -149,8 +161,13 @@ executable thfsm
     , filepath
     , gitrev
     , hashable
+    , hasql
+    , hasql-pool
+    , hasql-th
+    , hasql-transaction
     , mtl
     , optparse-applicative
+    , postgresql-binary
     , scientific
     , stm
     , text
@@ -185,8 +202,13 @@ test-suite thfsm-test
     , filepath
     , gitrev
     , hashable
+    , hasql
+    , hasql-pool
+    , hasql-th
+    , hasql-transaction
     , mtl
     , optparse-applicative
+    , postgresql-binary
     , scientific
     , stm
     , text

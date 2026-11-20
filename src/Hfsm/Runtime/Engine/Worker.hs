@@ -16,16 +16,15 @@ import Data.UUID (UUID)
 import qualified Data.UUID as U
 
 import GHC.Generics (Generic)
-
 import Data.Aeson (FromJSON, ToJSON)
 
 import Hfsm.Core.Digest (specDigestText)
 import Hfsm.Core.Name (machineNameText)
 import Hfsm.Core.Version (machineVersionText)
-import Hfsm.Runtime.Engine.Step (StepInput(..), runStep)
+import Hfsm.Runtime.Engine.Step (EngineErr(..), StepInput(..), runStep)
 import Hfsm.Runtime.Model (InstanceRw (..), SignalRw (..), SignalStatus(..), SnapshotRw (..))
 import Hfsm.Runtime.Registry (MachineKey(..), Registry, resolve)
-import Hfsm.Store.Class (AckRq(..), LeaseRq(..), LeaseRez(..), Store (..))
+import Hfsm.Store.Class (AckRq(..), LeaseRq(..), LeaseRez(..), Store(..), StoreErr(..))
 
 data WorkerCfg = WorkerCfg
   { batchSize :: Int
@@ -41,8 +40,7 @@ runWorker rawCfg store registry = do
   let cfg = normalizeWorkerCfg rawCfg
   forever $ do
     processed <- runTickCount cfg store registry
-    when (processed <= 0) $
-      sleepPollDelay cfg
+    when (processed <= 0) $ sleepPollDelay cfg
 
 runTick :: (MonadIO m, Show hf) => WorkerCfg -> Store m -> Registry st sg hf ctx cmd child -> m ()
 runTick rawCfg store registry =
@@ -62,38 +60,32 @@ runLeasedSignal :: (MonadIO m, Show hf) => WorkerCfg -> Store m -> Registry st s
 runLeasedSignal cfg store registry sigRw = do
   mInstRw <- store.loadInstance sigRw.inst
   case mInstRw of
-    Nothing ->
-      ackFailed cfg store sigRw (missingInstanceMsg sigRw)
-
+    Nothing -> ackFailed cfg store sigRw (missingInstanceMsg sigRw)
     Just instRw -> do
       mSnapRw <- store.loadSnapshot instRw.snap
       case mSnapRw of
-        Nothing ->
-          ackFailed cfg store sigRw (missingSnapshotMsg instRw)
-
+        Nothing -> ackFailed cfg store sigRw (missingSnapshotMsg instRw)
         Just snapRw -> do
           let key = machineKeyFromInstance instRw
           case resolve key registry of
-            Nothing ->
-              ackFailed cfg store sigRw (missingMachineMsg key)
-
+            Nothing -> ackFailed cfg store sigRw (missingMachineMsg key)
             Just compiled -> do
               rez <- runStep store compiled (stepInputOf key instRw snapRw sigRw)
               case rez of
-                Left err ->
-                  ackFailed cfg store sigRw (stepFailedMsg err)
-
-                Right _ ->
-                  ackApplied cfg store sigRw
+                -- An optimistic-CAS collision means a different turn moved
+                -- the instance while we planned: release/requeue this signal.
+                Left (StoreCommitEr (ConflictEr _)) -> ackRequeue cfg store sigRw
+                -- A transient backend failure should not terminally fail work.
+                Left (StoreCommitEr (BackendEr _)) -> ackRequeue cfg store sigRw
+                -- A fenced-out worker must not touch a signal it no longer owns.
+                Left (StoreCommitEr (LeaseLostEr _)) -> pure ()
+                Left err -> ackFailed cfg store sigRw (stepFailedMsg err)
+                -- Success ACK is an integral part of commitTurn; never ACK twice.
+                Right _ -> pure ()
 
 stepInputOf :: MachineKey -> InstanceRw -> SnapshotRw -> SignalRw -> StepInput
 stepInputOf key instRw snapRw sigRw =
-  StepInput
-    { machine = key
-    , instance_ = instRw
-    , snapshot = snapRw
-    , signal = sigRw
-    }
+  StepInput { machine = key, instance_ = instRw, snapshot = snapRw, signal = sigRw }
 
 leaseRqOf :: WorkerCfg -> UTCTime -> LeaseRq
 leaseRqOf cfg now =
@@ -106,29 +98,27 @@ leaseRqOf cfg now =
 
 machineKeyFromInstance :: InstanceRw -> MachineKey
 machineKeyFromInstance instRw =
-  MachineKey
-    { name = instRw.machine
-    , version = instRw.version
-    , digest = instRw.digest
-    }
-
-ackApplied :: MonadIO m => WorkerCfg -> Store m -> SignalRw -> m ()
-ackApplied cfg store sigRw =
-  ackSignalWith cfg store sigRw AppliedSs Nothing
+  MachineKey { name = instRw.machine, version = instRw.version, digest = instRw.digest }
 
 ackFailed :: MonadIO m => WorkerCfg -> Store m -> SignalRw -> Text -> m ()
 ackFailed cfg store sigRw msg =
   ackSignalWith cfg store sigRw FailedSs (Just msg)
 
+ackRequeue :: MonadIO m => WorkerCfg -> Store m -> SignalRw -> m ()
+ackRequeue cfg store sigRw =
+  ackSignalWith cfg store sigRw EnteredSs Nothing
+
+-- | Errors that produced no turn may be failed or retried using an explicit
+-- lease-fenced semantic ACK. An applied signal is NEVER ACKed here.
 ackSignalWith :: MonadIO m => WorkerCfg -> Store m -> SignalRw -> SignalStatus -> Maybe Text -> m ()
-ackSignalWith cfg store sigRw status note = do
+ackSignalWith cfg store sigRw statusVal noteVal = do
   now <- liftIO getCurrentTime
-  store.ackSignal
+  void $ store.ackSignal
     AckRq
       { signal = sigRw.uuid
       , lease = signalLease cfg sigRw
-      , status = status
-      , note = normalizeMaybeText note
+      , status = statusVal
+      , note = normalizeMaybeText noteVal
       , now = now
       }
 
@@ -141,8 +131,7 @@ signalLease cfg sigRw =
 sleepPollDelay :: MonadIO m => WorkerCfg -> m ()
 sleepPollDelay cfg = do
   let delayUs = pollDelayUs cfg
-  unless (delayUs <= 0) $
-    liftIO (threadDelay delayUs)
+  unless (delayUs <= 0) $ liftIO (threadDelay delayUs)
 
 pollDelayUs :: WorkerCfg -> Int
 pollDelayUs cfg
@@ -173,8 +162,7 @@ missingMachineMsg key =
   "no compiled machine registered for " <> renderMachineKey key
 
 stepFailedMsg :: Show err => err -> Text
-stepFailedMsg err =
-  "step execution failed: " <> T.pack (show err)
+stepFailedMsg err = "step execution failed: " <> T.pack (show err)
 
 renderMachineKey :: MachineKey -> Text
 renderMachineKey key =

@@ -7,11 +7,13 @@ import Options.Runtime (RunOptions)
 import Options.Cli (TestOpts (..))
 
 import Demo.ApprovalRuntime (testA)
+import Demo.CommitTurnRegression (regression)
 
 
 testCmd :: TestOpts -> RunOptions -> IO ()
 testCmd testOpts rtOpts = do
   putStrLn $ "@[testCmd] starting test: " <> T.unpack testOpts.testName
   case testOpts.testName of
-    "approval" -> testA
+    "approval" -> testA testOpts rtOpts
+    "commitTurn" -> regression
     _ -> putStrLn $ "@[testCmd] unknown test: " <> T.unpack testOpts.testName

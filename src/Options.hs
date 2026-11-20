@@ -21,13 +21,14 @@ import qualified System.Directory as Sdir
 
 
 import qualified Options.Cli as Cl (CliOptions (..), EnvOptions (..))
-import qualified Options.ConfFile as Fo (FileOptions (..))
-import qualified Options.Runtime as Rt (RunOptions (..), defaultRun)
+import qualified Options.ConfFile as Fo
+import qualified Options.Runtime as Rt
 
 
 type ConfError = Either String ()
 type RunOptSt = State Rt.RunOptions ConfError
 type RunOptIOSt = StateT Rt.RunOptions IO ConfError
+type PgDbOptIOSt = StateT Rt.PgDbConfig (StateT Rt.RunOptions IO) ConfError
 
 
 mconf :: MonadState s m => Maybe t -> (t -> s -> s) -> m ()
@@ -57,8 +58,17 @@ mergeOptions cli file env = do
   parseOptions :: Cl.CliOptions -> Fo.FileOptions -> RunOptIOSt
   parseOptions cli file = do
     mconf cli.debug $ \nVal s -> s { Rt.debug = nVal }
+    innerConf (\nVal s -> s { Rt.pgDbConf = nVal }) parsePgDb Rt.defaultPgDbConf file.db
     pure $ Right ()
 
+  parsePgDb :: Fo.PgDbOpts -> PgDbOptIOSt
+  parsePgDb dbO = do
+    mconf dbO.host $ \nVal s -> s { Rt.host = T.encodeUtf8 . T.pack $ nVal }
+    mconf dbO.port $ \nVal s -> s { Rt.port = fromIntegral nVal }
+    mconf dbO.user $ \nVal s -> s { Rt.user = T.encodeUtf8 . T.pack $ nVal }
+    mconf dbO.passwd $ \nVal s -> s { Rt.passwd = T.encodeUtf8 . T.pack $ nVal }
+    mconf dbO.dbase $ \nVal s -> s { Rt.dbase = T.encodeUtf8 . T.pack $ nVal }
+    pure $ Right ()
 
 
 

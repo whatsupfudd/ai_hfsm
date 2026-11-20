@@ -26,34 +26,36 @@ import Demo.MemoryStore
   , loadInstanceView
   , newMemoryStore
   , storeOf
+  , StoreImpl
   )
 
 import Hfsm.Render.Print (ppStoreView)
+import qualified DB.Connect as Db
+import Options.Runtime (RunOptions (..), PgDbConfig (..))
+import Options.Cli (TestOpts (..))
 import Demo.Print (ppRunState, printRuntimeStore)
 
-testA :: IO ()
-testA = do
-  spec <-
-    case approvalSpec of
-      Left err -> fail ("invalid approval spec: " <> show err)
-      Right x -> pure x
 
-  compiled <-
-    case compile spec of
-      Left err -> fail ("compile failed: " <> show err)
-      Right x -> pure x
+testA :: TestOpts -> RunOptions -> IO ()
+testA testOpts rtOpts = do
+  spec <- case approvalSpec of
+    Left err -> fail ("invalid approval spec: " <> show err)
+    Right x -> pure x
 
-  let report = validate compiled.graph
+  compiled <- case compile spec of
+    Left err -> fail ("compile failed: " <> show err)
+    Right x -> pure x
+
+  let
+    report = validate compiled.graph
   unless (ok report) $
     fail ("validation failed: " <> show report)
 
-  registry <-
-    case register compiled emptyRegistry of
-      Left err -> fail ("registry failed: " <> show err)
-      Right x -> pure x
+  registry <- case register compiled emptyRegistry of
+    Left err -> fail ("registry failed: " <> show err)
+    Right x -> pure x
 
-  store <- newMemoryStore
-
+  store <- if testOpts.doDb then newPgDbStore rtOpts.pgDbConf else newMemoryStore
   inst <- createInstance store compiled initialCtx
 
   enqueueSignal store inst (SubmitSg "alice")
@@ -85,3 +87,13 @@ initialCtx =
     , rejectedBy = Nothing
     , rejectReason = Nothing
     }
+
+
+newPgDbStore :: PgDbConfig -> IO StoreImpl
+newPgDbStore pgDbConf =
+  let
+    dbConf = Db.startPg pgDbConf
+  in do
+  putStrLn $ "@[newPgDbStore] faking newPgDbStore"
+  putStrLn $ "@[newPgDbStore] pgDbConf: " <> show pgDbConf
+  newMemoryStore

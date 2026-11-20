@@ -1,14 +1,14 @@
-module Options.Runtime (defaultRun, RunOptions (..)) where
+module Options.Runtime (defaultRun, RunOptions (..), PgDbConfig (..), defaultPgDbConf) where
 -- import Data.Int (Int)
 
 import Data.Text (Text)
+import DB.Connect (PgDbConfig (..), defaultPgDbConf)
 
 
 
 data RunOptions = RunOptions {
     debug :: Int
-    -- HERE: Add additional vars for providing runtime parameters:
-    -- Eg: , root :: Text
+    , pgDbConf :: PgDbConfig
   }
   deriving (Show)
 
@@ -16,5 +16,5 @@ defaultRun :: RunOptions
 defaultRun =
   RunOptions {
     debug = 0
-   -- HERE: Set default value for additional runtime parameters:  , root = "/tmp"
+    , pgDbConf = defaultPgDbConf
   }

@@ -617,10 +617,8 @@ lowerMachine machineSpec layout defs = do
         joinRef <- resolveJoinRef defs joinName
         pure (G.JoinCountJg joinRef count)
 
-    lowerSpawn :: (Show child) =>
-      Maybe JoinRef ->
-      SR.SpawnPlan child ->
-      StateT (LowerSt sg ctx hf cmd) (Either CompileErr) G.SpawnPlanG
+    lowerSpawn :: Maybe JoinRef -> SR.SpawnPlan child ->
+        StateT (LowerSt sg ctx hf cmd) (Either CompileErr) G.SpawnPlanG
     lowerSpawn joinRefMb spawnPlan =
       pure
         G.SpawnPlanG
@@ -642,7 +640,7 @@ lowerMachine machineSpec layout defs = do
           , payload = timerPlan.payload
           }
 
-    checkDuplicateCaseNames :: (Show st) => StateSpec st sg hf ctx cmd child -> StateT (LowerSt sg ctx hf cmd) (Either CompileErr) ()
+    checkDuplicateCaseNames :: StateSpec st sg hf ctx cmd child -> StateT (LowerSt sg ctx hf cmd) (Either CompileErr) ()
     checkDuplicateCaseNames stateSpec =
       case firstDuplicate (fmap caseNameText (justCaseNames stateSpec.cases)) of
         Nothing -> pure ()
@@ -652,7 +650,7 @@ lowerMachine machineSpec layout defs = do
               DuplicateCaseEr $
                 "state " <> renderStateLabel stateSpec.key stateSpec.name <> " has duplicate case name " <> quote dup
 
-    checkDuplicateRoutes :: (Show st, Show hf) => StateSpec st sg hf ctx cmd child -> StateT (LowerSt sg ctx hf cmd) (Either CompileErr) ()
+    checkDuplicateRoutes :: StateSpec st sg hf ctx cmd child -> StateT (LowerSt sg ctx hf cmd) (Either CompileErr) ()
     checkDuplicateRoutes stateSpec =
       case firstDuplicate (fmap (lowerHandoff . (.on)) stateSpec.routes) of
         Nothing -> pure ()

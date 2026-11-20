@@ -47,6 +47,12 @@ dependencies:
   - transformers
   # For Distributed processes:
   - stm
+  # For SQL:
+  - postgresql-binary
+  - hasql
+  - hasql-th
+  - hasql-pool
+  - hasql-transaction
 
 default-extensions:
 - OverloadedStrings

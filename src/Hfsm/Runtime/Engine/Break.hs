@@ -1,7 +1,9 @@
 module Hfsm.Runtime.Engine.Break
   ( matchBreaks
+  {- Deprecated:
   , pauseInstance
   , resumeInstance
+  -}
   ) where
 
 import Data.Maybe (isJust)
@@ -28,6 +30,8 @@ matchBreaks breakRws stepInput stepPlan =
   let hitAt = stepPlan.step.createdAt
   in fmap (markBreakHit hitAt) (filter (matchesBreak stepInput stepPlan) breakRws)
 
+
+{- Deprecated, due to new one-turn persistence contract.
 pauseInstance :: Monad m => Store m -> UUID -> BreakKind -> m ()
 pauseInstance store instId breakKind =
   store.appendBreak [mkPauseAppend instId breakKind]
@@ -35,6 +39,8 @@ pauseInstance store instId breakKind =
 resumeInstance :: Monad m => Store m -> UUID -> m ()
 resumeInstance store instId =
   store.appendBreak (fmap (mkResumeAppend instId) allBreakKinds)
+-}
+
 
 matchesBreak :: StepInput -> StepPlan -> BreakRw -> Bool
 matchesBreak stepInput stepPlan breakRw =

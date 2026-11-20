@@ -58,9 +58,11 @@ migrateInstance store registry plan instUuid =
                       pure (Left err)
 
                     Right prepared -> do
+                      {- Deprecated for new one-turn persistence contract:
                       _ <- store.appendSnapshot prepared.snapshot
                       _ <- store.appendStep prepared.step
                       store.updateProj emptyProjBatch
+                      -}
                       pure (Right instUuid)
 
 migrateBatch :: Monad m => Store m -> Registry st sg hf ctx cmd child -> MigratePlan -> [UUID] -> m [Either MigrateErr UUID]

@@ -1,8 +1,5 @@
-{-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE NoFieldSelectors #-}
-{-# LANGUAGE OverloadedRecordDot #-}
-{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module Demo.MemoryStore
@@ -15,6 +12,7 @@ module Demo.MemoryStore
   ) where
 
 import Control.Concurrent.STM
+import Control.Monad (replicateM)
 
 import qualified Data.IntMap.Strict as IM
 import Data.Int (Int64)
@@ -74,6 +72,8 @@ import Hfsm.Runtime.Model
 
 import Hfsm.Store.Class
   ( AckRq(..)
+  , CommitRq(..)
+  , StoreErr(..)
   , BreakAppend(..)
   , ChildAppend(..)
   , CommitRez(..)
@@ -82,8 +82,6 @@ import Hfsm.Store.Class
   , OutboxAppend(..)
   , PollRq(..)
   , ProjBatch(..)
-  , SnapshotAppend(..)
-  , StepAppend(..)
   , Store(..)
   )
 import Hfsm.Spec.Def (MachineSpec(..), StateSpec(..))
@@ -150,17 +148,12 @@ memoryApi impl =
     { leaseSignal = memoryLeaseSignal impl
     , loadInstance = memoryLoadInstance impl
     , loadSnapshot = memoryLoadSnapshot impl
-    , appendStep = memoryAppendStep impl
-    , appendSnapshot = memoryAppendSnapshot impl
-    , appendOutbox = memoryAppendOutbox impl
-    , appendChild = memoryAppendChild impl
-    , appendBreak = memoryAppendBreak impl
+    , commitTurn = memoryCommitTurn impl
     , ackSignal = memoryAckSignal impl
-    , updateProj = memoryUpdateProj impl
     , listSignals = memoryListSignals impl
     }
 
-createInstance :: ToJSON ctx => StoreImpl -> CompiledMachine st sg hf ctx cmd child -> ctx -> IO UUID
+createInstance :: StoreImpl -> CompiledMachine st sg hf ctx cmd child -> ctx -> IO UUID
 createInstance impl compiled ctx = do
   now <- getCurrentTime
   instId <- U4.nextRandom
@@ -337,172 +330,118 @@ memoryLoadSnapshot :: StoreImpl -> UUID -> IO (Maybe SnapshotRw)
 memoryLoadSnapshot impl snapshotId =
   M.lookup snapshotId <$> readTVarIO impl.snapshots
 
-memoryAppendStep :: StoreImpl -> StepAppend -> IO StepRw
-memoryAppendStep impl app = do
-  uid <- freshUid impl
-  stepId <- U4.nextRandom
-
-  let row =
-        StepRw
-          { uid = uid
-          , uuid = stepId
-          , inst = app.inst
-          , signal = app.signal
-          , kind = app.kind
-          , from = app.from
-          , to = app.to
-          , caseRef = app.caseRef
-          , route = app.route
-          , note = app.note
-          , createdAt = app.now
-          }
-
-  atomically $
-    modifyTVar' impl.steps (M.insert stepId row)
-
-  pure row
-
-memoryAppendSnapshot :: StoreImpl -> SnapshotAppend -> IO SnapshotRw
-memoryAppendSnapshot impl app = do
-  uid <- freshUid impl
-  snapshotId <- U4.nextRandom
-
-  let row =
-        SnapshotRw
-          { uid = uid
-          , uuid = snapshotId
-          , inst = app.inst
-          , state = app.state
-          , path = app.path
-          , ctx = app.ctx
-          , wait = app.wait
-          , child = app.child
-          , version = app.version
-          , digest = app.digest
-          , createdAt = app.now
-          }
-
+-- | Reference backend: the entire successful turn is one STM transaction.
+-- UUID generation occurs before the transaction; no row is written until all
+-- checks have passed. Unlike the previous append chain, crashes or conflicts
+-- cannot expose partial commits.
+memoryCommitTurn :: StoreImpl -> CommitRq -> IO (Either StoreErr CommitRez)
+memoryCommitTurn impl rq = do
+  outboxIds <- replicateM (length rq.outbox) U4.nextRandom
+  childIds <- replicateM (length rq.child) U4.nextRandom
+  breakIds <- replicateM (length rq.breaks) U4.nextRandom
   atomically $ do
-    modifyTVar' impl.snapshots (M.insert snapshotId row)
-    modifyTVar' impl.instances $
-      M.adjust
-        (\inst ->
-          inst
-            { state = app.state
-            , path = app.path
-            , snap = snapshotId
-            , updatedAt = app.now
-            }
-        )
-        app.inst
-
-  pure row
-
-memoryAppendOutbox :: StoreImpl -> [OutboxAppend] -> IO ()
-memoryAppendOutbox impl apps =
-  mapM_ appendOne apps
-  where
-    appendOne :: OutboxAppend -> IO ()
-    appendOne app = do
-      uid <- freshUid impl
-      outboxId <- U4.nextRandom
-
-      let row =
-            OutboxRw
-              { uid = uid
-              , uuid = outboxId
-              , inst = app.inst
-              , step = app.step
-              , status = ReadyOs
-              , payload = app.payload
-              , lease = Nothing
-              , createdAt = app.now
-              , updatedAt = app.now
-              }
-
-      atomically $
-        modifyTVar' impl.outboxes (M.insert outboxId row)
-
-memoryAppendChild :: StoreImpl -> [ChildAppend] -> IO ()
-memoryAppendChild impl apps =
-  mapM_ appendOne apps
-  where
-    appendOne :: ChildAppend -> IO ()
-    appendOne app = do
-      uid <- freshUid impl
-      rowId <- U4.nextRandom
-
-      let row =
-            ChildRw
-              { uid = uid
-              , uuid = rowId
-              , parent = app.parent
-              , child = app.child
-              , key = app.key
-              , status = app.status
-              , join = app.join
-              , createdAt = app.now
-              , updatedAt = app.now
-              }
-
-      atomically $
-        modifyTVar' impl.children (M.insert rowId row)
-
-memoryAppendBreak :: StoreImpl -> [BreakAppend] -> IO ()
-memoryAppendBreak impl apps =
-  mapM_ appendOne apps
-  where
-    appendOne :: BreakAppend -> IO ()
-    appendOne app = do
-      uid <- freshUid impl
-      breakId <- U4.nextRandom
-
-      let row =
-            BreakRw
-              { uid = uid
-              , uuid = breakId
-              , inst = app.inst
-              , kind = app.kind
-              , state = app.state
-              , status = app.status
-              , note = app.note
-              , createdAt = app.now
-              , updatedAt = app.now
-              }
-
-      atomically $
-        modifyTVar' impl.breaks (M.insert breakId row)
-
-memoryAckSignal :: StoreImpl -> AckRq -> IO ()
-memoryAckSignal impl rq =
-  atomically $ do
+    instances <- readTVar impl.instances
     signals <- readTVar impl.signals
+    snapshots <- readTVar impl.snapshots
+    steps <- readTVar impl.steps
+    case (M.lookup rq.instanceId instances, M.lookup rq.signalId signals) of
+      (Nothing, _) -> pure (Left (NotFoundEr "instance missing at commit"))
+      (_, Nothing) -> pure (Left (NotFoundEr "signal missing at commit"))
+      (Just instRow, Just sigRow)
+        | instRow.snap /= rq.expectedSnapshot ->
+            pure (Left (ConflictEr "instance snapshot changed since planning"))
+        | M.notMember rq.expectedSnapshot snapshots ->
+            pure (Left (NotFoundEr "expected snapshot not stored"))
+        | sigRow.inst /= rq.instanceId ->
+            pure (Left (ConflictEr "signal belongs to a different instance"))
+        | sigRow.status /= LeasedSs || sigRow.lease /= Just rq.leaseId ->
+            pure (Left (LeaseLostEr "signal lease no longer valid"))
+        | any (\app -> app.inst /= rq.instanceId || app.step /= rq.step.uuid) rq.outbox ->
+            pure (Left (ConflictEr "planned outbox is not bound to this turn"))
+        | any (\app -> app.parent /= rq.instanceId) rq.child ->
+            pure (Left (ConflictEr "child references a different parent"))
+        | any (\app -> app.inst /= Just rq.instanceId) rq.breaks ->
+            pure (Left (ConflictEr "breakpoint references a different instance"))
+        | rq.step.inst /= rq.instanceId || rq.snapshot.inst /= rq.instanceId ->
+            pure (Left (ConflictEr "planned step/snapshot has different instance"))
+        | rq.step.signal /= Just rq.signalId ->
+            pure (Left (ConflictEr "planned step has different signal"))
+        | rq.step.from /= instRow.state ->
+            pure (Left (ConflictEr "planned step has stale from-state"))
+        | rq.snapshot.state /= rq.step.to ->
+            pure (Left (ConflictEr "step target differs from snapshot state"))
+        | rq.snapshot.version /= instRow.version || rq.snapshot.digest /= instRow.digest ->
+            pure (Left (ConflictEr "snapshot machine version changed"))
+        | rq.step.uuid == U.nil || rq.snapshot.uuid == U.nil ->
+            pure (Left (ConflictEr "turn IDs must be planned and non-nil"))
+        | M.member rq.step.uuid steps || M.member rq.snapshot.uuid snapshots ->
+            pure (Left (ConflictEr "turn already committed"))
+        | otherwise -> do
+            startUid <- readTVar impl.nextUid
+            let
+              stepRw = rq.step { uid = startUid } :: StepRw
+              snapshotRw = rq.snapshot { uid = startUid + 1 } :: SnapshotRw
+              outboxStart = startUid + 2
+              childStart = outboxStart + fromIntegral (length rq.outbox)
+              breakStart = childStart + fromIntegral (length rq.child)
+              endUid = breakStart + fromIntegral (length rq.breaks)
+              outboxRows = zipWith3
+                (\uid rowId app -> OutboxRw
+                  { uid = uid, uuid = rowId, inst = app.inst
+                  , step = stepRw.uuid, status = ReadyOs, payload = app.payload
+                  , lease = Nothing, createdAt = app.now, updatedAt = app.now })
+                [outboxStart..] outboxIds rq.outbox
+              childRows = zipWith3
+                (\uid rowId app -> ChildRw
+                  { uid = uid, uuid = rowId, parent = app.parent
+                  , child = app.child, key = app.key, status = app.status
+                  , join = app.join, createdAt = app.now, updatedAt = app.now })
+                [childStart..] childIds rq.child
+              breakRows = zipWith3
+                (\uid rowId app -> BreakRw
+                  { uid = uid, uuid = rowId, inst = app.inst
+                  , kind = app.kind, state = app.state, status = app.status
+                  , note = app.note, createdAt = app.now, updatedAt = app.now })
+                [breakStart..] breakIds rq.breaks
+              instNext = instRow
+                { state = snapshotRw.state, path = snapshotRw.path
+                , snap = snapshotRw.uuid, status = rq.nextStatus
+                , updatedAt = snapshotRw.createdAt }
+              sigNext = (sigRow :: SignalRw)
+                { status = AppliedSs, lease = Nothing
+                , updatedAt = snapshotRw.createdAt }
+            writeTVar impl.nextUid endUid
+            writeTVar impl.instances (M.insert rq.instanceId instNext instances)
+            writeTVar impl.signals (M.insert rq.signalId sigNext signals)
+            writeTVar impl.steps (M.insert stepRw.uuid stepRw steps)
+            writeTVar impl.snapshots (M.insert snapshotRw.uuid snapshotRw snapshots)
+            modifyTVar' impl.outboxes (\xs -> foldr (\x -> M.insert x.uuid x) xs outboxRows)
+            modifyTVar' impl.children (\xs -> foldr (\x -> M.insert x.uuid x) xs childRows)
+            modifyTVar' impl.breaks (\xs -> foldr (\x -> M.insert x.uuid x) xs breakRows)
+            modifyTVar' impl.activeProj (<> rq.proj.active)
+            modifyTVar' impl.traceProj (<> rq.proj.trace)
+            modifyTVar' impl.queueProj (<> rq.proj.queue)
+            modifyTVar' impl.treeProj (<> rq.proj.tree)
+            pure (Right CommitRez { step = stepRw, snapshot = snapshotRw })
 
-    case M.lookup rq.signal signals of
-      Nothing ->
-        pure ()
-
-      Just row
-        | row.lease == Just rq.lease ->
-            writeTVar impl.signals $
-              M.insert
-                rq.signal
-                (row :: SignalRw)
-                  { status = rq.status
-                  , updatedAt = rq.now
-                  }
-                signals
-
-        | otherwise ->
-            pure ()
-
-memoryUpdateProj :: StoreImpl -> ProjBatch -> IO ()
-memoryUpdateProj impl batch =
-  atomically $ do
-    modifyTVar' impl.activeProj (<> batch.active)
-    modifyTVar' impl.traceProj (<> batch.trace)
-    modifyTVar' impl.queueProj (<> batch.queue)
-    modifyTVar' impl.treeProj (<> batch.tree)
+-- | Errors have no successful turn to commit. Failure/rejection/requeue ACKs are
+-- also fenced. A mismatched/stale lease never changes the signal row.
+memoryAckSignal :: StoreImpl -> AckRq -> IO (Either StoreErr ())
+memoryAckSignal impl rq = atomically $ do
+  signals <- readTVar impl.signals
+  case M.lookup rq.signal signals of
+    Nothing -> pure (Left (NotFoundEr "signal missing for failure ACK"))
+    Just row
+      | row.status /= LeasedSs || row.lease /= Just rq.lease ->
+          pure (Left (LeaseLostEr "signal is not leased by this worker"))
+      | rq.status /= FailedSs && rq.status /= RejectedSs && rq.status /= EnteredSs ->
+          pure (Left (ConflictEr "ACK outside commitTurn may only fail, reject or requeue"))
+      | otherwise -> do
+          writeTVar impl.signals $
+            M.insert rq.signal
+              (row { status = rq.status, lease = Nothing, updatedAt = rq.now } :: SignalRw)
+              signals
+          pure (Right ())
 
 memoryListSignals :: StoreImpl -> PollRq -> IO [SignalRw]
 memoryListSignals impl rq =

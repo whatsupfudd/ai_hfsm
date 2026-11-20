@@ -26,9 +26,9 @@ import Data.Text (Text)
 import qualified Data.Text as T
 
 data CodecErr =
-    DecodeEr Text
-  | EncodeEr Text
-  | SchemaEr Text
+    DecodeCE Text
+  | EncodeCE Text
+  | SchemaCE Text
   deriving stock (Eq, Ord, Show, Read)
 
 data Codec a = Codec
@@ -96,13 +96,13 @@ mapCodec to from codec =
 renderCodecErr :: CodecErr -> Text
 renderCodecErr err =
   case err of
-    DecodeEr msg ->
+    DecodeCE msg ->
       "codec decode error: " <> msg
 
-    EncodeEr msg ->
+    EncodeCE msg ->
       "codec encode error: " <> msg
 
-    SchemaEr msg ->
+    SchemaCE msg ->
       "codec schema error: " <> msg
 
 decodeJsonValue :: FromJSON a => Value -> Either CodecErr a
@@ -112,4 +112,4 @@ decodeJsonValue value =
       Right x
 
     Error msg ->
-      Left (DecodeEr (T.pack msg))
+      Left (DecodeCE (T.pack msg))

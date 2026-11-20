@@ -21,15 +21,25 @@ import qualified Data.Yaml as Yaml
 data FileOptions = FileOptions {
   debug :: Maybe Int
   , primaryLocale :: Maybe String
-  -- HERE: add new parameters received from the config file:
-  -- Et: , rootDir :: Maybe String
+  , db :: Maybe PgDbOpts
  }
  deriving stock (Show, Generic)
+
+data PgDbOpts = PgDbOpts {
+  port :: Maybe Int
+  , host :: Maybe String
+  , user :: Maybe String
+  , passwd :: Maybe String
+  , dbase :: Maybe String
+  , poolSize :: Maybe Int
+  , poolTimeOut :: Maybe Int
+  }
+  deriving stock (Show, Generic)
 
 
 defaultConfName :: FilePath
 -- HERE: modify config file to .config/thfsm.yaml or .thfsm/config.yaml
-defaultConfName = ".fudd/simple.yaml"
+defaultConfName = ".fudd/twfeng/config.yaml"
 
 
 defaultConfigFilePath :: IO (Either String FilePath)
@@ -42,6 +52,8 @@ defaultConfigFilePath = do
 
 -- YAML support:
 instance Aes.FromJSON FileOptions
+instance Aes.FromJSON PgDbOpts
+
 
 parseFileOptions :: FilePath -> IO (Either String FileOptions)
 parseFileOptions filePath =

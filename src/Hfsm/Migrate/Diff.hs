@@ -290,7 +290,7 @@ pairStates oldIx newIx =
     removedInfos = filter (\info -> info.ref `S.notMember` movedOldRefs) remainingOld
     addedInfos = filter (\info -> info.ref `S.notMember` movedNewRefs) remainingNew
 
-    moveDiffs = fmap (\((_, newInfo), True) -> StateMovedGd newInfo.ref) (filter snd movedByLeaf)
+    moveDiffs = fmap handleLeaf (filter snd movedByLeaf)
     removeDiffs = fmap (StateRemovedGd . (.ref)) removedInfos
     addDiffs = fmap (StateAddedGd . (.ref)) addedInfos
   in
@@ -298,6 +298,15 @@ pairStates oldIx newIx =
       pairs = exactPairs <> movedPairs
     , diffs = moveDiffs <> removeDiffs <> addDiffs
     }
+  where
+  handleLeaf :: ((StateInfo, StateInfo), Bool) -> GraphDiff
+  handleLeaf leafState =
+    case leafState of
+      ((_, newInfo), True) -> StateMovedGd newInfo.ref
+      -- TODO: validate whether this makes sense, or if there's an inconsistency in the
+      -- GraphDiff logic that prevents from dealing with no-difference situation:
+      ((oldInfo, _), False) -> StateRemovedGd oldInfo.ref
+
 
 
 pairMovedByLeaf :: [StateInfo] -> [StateInfo] -> [((StateInfo, StateInfo), Bool)]
