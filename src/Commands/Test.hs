@@ -1,4 +1,5 @@
--- | DF-01: complete test dispatcher, retaining CT-01 through CT-06 commands.
+-- | DF-02 test dispatcher: complete replacement, preserving CT-01..CT-06
+-- and DF-01 regression names without modifying any existing test modules.
 module Commands.Test where
 
 import qualified Data.Text as T
@@ -16,6 +17,8 @@ import qualified Demo.OperationsChaosRegression as Chaos
 import qualified Demo.OperationsChaosProcess as ChaosProcess
 import qualified Demo.FlowRegression as Flow
 import qualified Demo.FlowPostgresRegression as FlowPg
+import qualified Demo.FlowDynamicRegression as Dynamic
+import qualified Demo.FlowDynamicPostgresRegression as DynamicPg
 
 testCmd :: TestOpts -> RunOptions -> IO ()
 testCmd testOpts rtOpts = do
@@ -37,4 +40,6 @@ testCmd testOpts rtOpts = do
     "chaosInspectDb" -> ChaosProcess.inspectFixtureDb rtOpts.pgDbConf
     "flow" -> Flow.regression
     "flowDb" -> FlowPg.regressionPg rtOpts.pgDbConf
+    "flowDynamic" -> Dynamic.regression
+    "flowDynamicDb" -> DynamicPg.regressionPg rtOpts.pgDbConf
     _ -> putStrLn $ "@[testCmd] unknown test: " <> T.unpack testOpts.testName

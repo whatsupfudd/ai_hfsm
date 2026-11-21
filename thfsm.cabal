@@ -37,6 +37,8 @@ library
       Demo.CommitTurnRegression
       Demo.DistributedPostgresRegression
       Demo.DistributedSafetyRegression
+      Demo.FlowDynamicPostgresRegression
+      Demo.FlowDynamicRegression
       Demo.FlowPostgresRegression
       Demo.FlowRegression
       Demo.HistoryRegression
@@ -66,6 +68,12 @@ library
       Hfsm.Export.Json
       Hfsm.Export.Mermaid
       Hfsm.Export.Scxml
+      Hfsm.Flow.Dynamic.Postgres
+      Hfsm.Flow.Dynamic.Postgres.Statements
+      Hfsm.Flow.Dynamic.Provider
+      Hfsm.Flow.Dynamic.Runtime
+      Hfsm.Flow.Dynamic.Spec
+      Hfsm.Flow.Dynamic.Types
       Hfsm.Flow.Postgres
       Hfsm.Flow.Postgres.Statements
       Hfsm.Flow.Provider.Start
