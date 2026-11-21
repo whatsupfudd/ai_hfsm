@@ -3,16 +3,10 @@
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE StrictData #-}
 
+-- | CT-05: registry guards one immutable digest per (machine, version).
 module Hfsm.Runtime.Registry
-  ( MachineKey(..)
-  , Registry(..)
-  , RegistryErr(..)
-  , emptyRegistry
-  , machineKeyOf
-  , register
-  , registerMany
-  , resolve
-  , latest
+  ( MachineKey(..), Registry(..), RegistryErr(..)
+  , emptyRegistry, machineKeyOf, register, registerMany, resolve, latest
   ) where
 
 import Control.DeepSeq (NFData)
@@ -44,63 +38,51 @@ data Registry st sg hf ctx cmd child = Registry
 
 data RegistryErr
   = DuplicateMachineEr MachineKey
+  | VersionDigestCollisionEr MachineKey MachineKey
   deriving stock (Eq, Ord, Show, Read, Generic)
   deriving anyclass (NFData, ToJSON, FromJSON)
 
 emptyRegistry :: Registry st sg hf ctx cmd child
-emptyRegistry =
-  Registry
-    { byKey = M.empty
-    , byName = M.empty
-    }
+emptyRegistry = Registry { byKey=M.empty, byName=M.empty }
 
 machineKeyOf :: CompiledMachine st sg hf ctx cmd child -> MachineKey
-machineKeyOf compiled =
-  MachineKey
-    { name = compiled.spec.name
-    , version = compiled.spec.version
-    , digest = compiled.digest
-    }
+machineKeyOf compiled = MachineKey
+  { name=compiled.spec.name
+  , version=compiled.spec.version
+  , digest=compiled.digest }
 
-register ::
-  CompiledMachine st sg hf ctx cmd child
-  -> Registry st sg hf ctx cmd child
-  -> Either RegistryErr (Registry st sg hf ctx cmd child)
+register :: CompiledMachine st sg hf ctx cmd child
+         -> Registry st sg hf ctx cmd child
+         -> Either RegistryErr (Registry st sg hf ctx cmd child)
 register compiled registry =
   let key = machineKeyOf compiled
-  in
-  if M.member key registry.byKey
-    then Left (DuplicateMachineEr key)
-    else
-      Right
-        Registry
-          { byKey = M.insert key compiled registry.byKey
-          , byName = insertNameKey key registry.byName
-          }
+      existing = M.findWithDefault [] key.name registry.byName
+      conflict = find (\k -> k.version == key.version && k.digest /= key.digest) existing
+  in if M.member key registry.byKey
+       then Left (DuplicateMachineEr key)
+       else case conflict of
+         Just old -> Left (VersionDigestCollisionEr old key)
+         Nothing -> Right Registry
+           { byKey=M.insert key compiled registry.byKey
+           , byName=insertNameKey key registry.byName }
 
-registerMany ::
-  [CompiledMachine st sg hf ctx cmd child]
-  -> Registry st sg hf ctx cmd child
-  -> Either RegistryErr (Registry st sg hf ctx cmd child)
-registerMany compileds registry0 = foldM (flip register) registry0 compileds
+registerMany :: [CompiledMachine st sg hf ctx cmd child]
+             -> Registry st sg hf ctx cmd child
+             -> Either RegistryErr (Registry st sg hf ctx cmd child)
+registerMany machines registry = foldM (flip register) registry machines
 
-resolve ::
-  MachineKey
-  -> Registry st sg hf ctx cmd child
-  -> Maybe (CompiledMachine st sg hf ctx cmd child)
-resolve key registry =
-  M.lookup key registry.byKey
+resolve :: MachineKey -> Registry st sg hf ctx cmd child
+        -> Maybe (CompiledMachine st sg hf ctx cmd child)
+resolve key registry = M.lookup key registry.byKey
 
--- latest is "most recently registered for this machine name".
--- The registry does not impose any semantic ordering on MachineVersion.
+-- | Most recently registered version (not a semver ordering).
 latest :: MachineName -> Registry st sg hf ctx cmd child -> Maybe MachineKey
 latest machineName registry = do
   keys <- M.lookup machineName registry.byName
   find (\key -> M.member key registry.byKey) keys
 
 insertNameKey :: MachineKey -> Map MachineName [MachineKey] -> Map MachineName [MachineKey]
-insertNameKey key =
-  M.alter step key.name
-  where
-    step Nothing = Just [key]
-    step (Just keys) = Just (key : filter (/= key) keys)
+insertNameKey key = M.alter step key.name
+ where
+  step Nothing = Just [key]
+  step (Just keys) = Just (key : filter (/= key) keys)

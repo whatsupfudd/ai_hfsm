@@ -37,6 +37,7 @@ library
       Demo.CommitTurnRegression
       Demo.DistributedPostgresRegression
       Demo.DistributedSafetyRegression
+      Demo.HistoryRegression
       Demo.MemoryStore
       Demo.Print
       Hfsm.Activity.Policy
@@ -62,10 +63,21 @@ library
       Hfsm.Export.Scxml
       Hfsm.Graph.Def
       Hfsm.Graph.Index
+      Hfsm.History.Postgres
+      Hfsm.History.Release
+      Hfsm.History.Replay
+      Hfsm.History.Statements
+      Hfsm.History.Types
       Hfsm.Migrate.Check
       Hfsm.Migrate.Diff
       Hfsm.Migrate.Plan
       Hfsm.Migrate.Run
+      Hfsm.Migration.PinnedEnqueue
+      Hfsm.Migration.Plan
+      Hfsm.Migration.Postgres
+      Hfsm.Migration.Replay
+      Hfsm.Migration.Statements
+      Hfsm.Migration.Types
       Hfsm.Proj.Active
       Hfsm.Proj.Queue
       Hfsm.Proj.Rebuild
