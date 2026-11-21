@@ -11,6 +11,9 @@ import qualified Demo.DistributedSafetyRegression as Distributed
 import qualified Demo.DistributedPostgresRegression as DistributedPg
 import qualified Demo.ActivityRegression as Activity
 import qualified Demo.HistoryRegression as History
+import qualified Demo.OperationsRegression as Operations
+import qualified Demo.OperationsChaosRegression as Chaos
+import qualified Demo.OperationsChaosProcess as ChaosProcess
 
 testCmd :: TestOpts -> RunOptions -> IO ()
 testCmd testOpts rtOpts = do
@@ -24,4 +27,10 @@ testCmd testOpts rtOpts = do
     "activityDb" -> Activity.regressionPg rtOpts.pgDbConf
     "history" -> History.regression
     "historyDb" -> History.regressionPg rtOpts.pgDbConf
+    "operations" -> Operations.regression
+    "operationsDb" -> Operations.regressionPg rtOpts.pgDbConf
+    "chaosDb" -> Chaos.regressionPg rtOpts.pgDbConf
+    "chaosFixtureDb" -> ChaosProcess.createFixtureDb rtOpts.pgDbConf
+    "chaosWorkerDb" -> ChaosProcess.chaosWorkerDb rtOpts.pgDbConf
+    "chaosInspectDb" -> ChaosProcess.inspectFixtureDb rtOpts.pgDbConf
     _ -> putStrLn $ "@[testCmd] unknown test: " <> T.unpack testOpts.testName

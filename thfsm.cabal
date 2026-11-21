@@ -39,6 +39,9 @@ library
       Demo.DistributedSafetyRegression
       Demo.HistoryRegression
       Demo.MemoryStore
+      Demo.OperationsChaosProcess
+      Demo.OperationsChaosRegression
+      Demo.OperationsRegression
       Demo.Print
       Hfsm.Activity.Policy
       Hfsm.Activity.Provider.Enqueue
@@ -78,6 +81,17 @@ library
       Hfsm.Migration.Replay
       Hfsm.Migration.Statements
       Hfsm.Migration.Types
+      Hfsm.Operations.Fault
+      Hfsm.Operations.Metrics
+      Hfsm.Operations.Postgres
+      Hfsm.Operations.Postgres.Statements
+      Hfsm.Operations.Projection
+      Hfsm.Operations.Provider.Enqueue
+      Hfsm.Operations.Provider.HttpTraced
+      Hfsm.Operations.Runtime
+      Hfsm.Operations.Trace
+      Hfsm.Operations.Traced
+      Hfsm.Operations.Types
       Hfsm.Proj.Active
       Hfsm.Proj.Queue
       Hfsm.Proj.Rebuild
