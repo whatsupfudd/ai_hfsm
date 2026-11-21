@@ -1,4 +1,4 @@
--- | CT-05: existing commands preserved; adds history/historyDb regressions.
+-- | DF-01: complete test dispatcher, retaining CT-01 through CT-06 commands.
 module Commands.Test where
 
 import qualified Data.Text as T
@@ -14,6 +14,8 @@ import qualified Demo.HistoryRegression as History
 import qualified Demo.OperationsRegression as Operations
 import qualified Demo.OperationsChaosRegression as Chaos
 import qualified Demo.OperationsChaosProcess as ChaosProcess
+import qualified Demo.FlowRegression as Flow
+import qualified Demo.FlowPostgresRegression as FlowPg
 
 testCmd :: TestOpts -> RunOptions -> IO ()
 testCmd testOpts rtOpts = do
@@ -33,4 +35,6 @@ testCmd testOpts rtOpts = do
     "chaosFixtureDb" -> ChaosProcess.createFixtureDb rtOpts.pgDbConf
     "chaosWorkerDb" -> ChaosProcess.chaosWorkerDb rtOpts.pgDbConf
     "chaosInspectDb" -> ChaosProcess.inspectFixtureDb rtOpts.pgDbConf
+    "flow" -> Flow.regression
+    "flowDb" -> FlowPg.regressionPg rtOpts.pgDbConf
     _ -> putStrLn $ "@[testCmd] unknown test: " <> T.unpack testOpts.testName
